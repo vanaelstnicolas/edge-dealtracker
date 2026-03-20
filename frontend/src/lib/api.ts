@@ -1,4 +1,5 @@
 import type { Deal, DealStatus, UserMapping } from '../types/deal'
+import { supabase } from './supabase'
 
 type ApiDeal = {
   id: string
@@ -25,10 +26,14 @@ type RequestOptions = {
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api'
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const session = supabase ? (await supabase.auth.getSession()).data.session : null
+  const accessToken = session?.access_token
+
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: options.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
   })

@@ -7,12 +7,15 @@ Date: 2026-03-20
 - Backend now supports a Supabase-backed repository with automatic fallback to in-memory storage when Supabase env vars are missing.
 - Frontend pages (`dashboard`, `pipeline`, `settings`) are connected to real backend APIs instead of local mock data.
 - Microsoft Entra login is integrated through Supabase Auth in the frontend.
+- Backend API routes for deals/dashboard/settings now enforce Supabase JWT bearer auth.
+- Frontend API client now sends the Supabase access token in the `Authorization` header.
 - Twilio webhook includes OpenAI NLU parsing with fallback to legacy text command parsing.
 - A debug endpoint was added for NLU command parsing tests outside Twilio flow.
 
 ## Files added
 
 - `backend/app/repositories/supabase.py`
+- `backend/app/api/deps/auth.py`
 - `frontend/src/lib/api.ts`
 - `frontend/src/lib/supabase.ts`
 - `frontend/src/pages/LoginPage.tsx`
@@ -22,6 +25,9 @@ Date: 2026-03-20
 
 - `backend/app/repositories/in_memory.py`
 - `backend/app/api/routes/twilio.py`
+- `backend/app/api/routes/deals.py`
+- `backend/app/api/routes/dashboard.py`
+- `backend/app/api/routes/settings.py`
 - `frontend/src/App.tsx`
 - `frontend/src/components/Sidebar.tsx`
 - `frontend/src/pages/DashboardPage.tsx`
@@ -58,10 +64,18 @@ Date: 2026-03-20
 
 ## API/feature checkpoints
 
-- `GET /api/deals` -> consumed by Dashboard + Pipeline
-- `GET /api/settings/users` and `PUT /api/settings/users/{user_id}` -> consumed by Settings
+- `GET /api/deals` -> consumed by Dashboard + Pipeline, now requires bearer token and is scoped to authenticated owner
+- `GET /api/settings/users` and `PUT /api/settings/users/{user_id}` -> consumed by Settings, now require bearer token
+- `GET /api/dashboard/kpis` -> now requires bearer token
 - `POST /api/webhooks/twilio` -> now uses OpenAI NLU conversion to internal command format when possible
 - `POST /api/webhooks/twilio/debug/parse` -> local debug endpoint (disabled when `ENVIRONMENT=prod`)
+
+## Validation completed
+
+- Manual API auth checks done in PowerShell:
+  - `GET /api/health` works without token.
+  - `GET /api/deals` without token returns `401 Missing bearer token`.
+  - `GET /api/deals` with bearer token succeeds (`200`), currently returns an empty list for the authenticated user.
 
 ## How to run locally
 
@@ -81,7 +95,6 @@ Date: 2026-03-20
 
 ## Suggested next steps
 
-1. Enforce Supabase JWT verification on backend API routes.
-2. Persist authenticated user profile into `users` (upsert on login).
-3. Add a small backend test suite for repository + Twilio command paths.
-4. Remove or restrict debug endpoint outside dev/staging environments.
+1. Persist authenticated user profile into `users` (upsert on login) to align user IDs and deal ownership.
+2. Add a small backend test suite for repository + protected route auth behavior.
+3. Remove or restrict debug endpoint outside dev/staging environments.
