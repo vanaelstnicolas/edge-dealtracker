@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Helvetica, Arial, sans-serif;
+  color: #000000;
+  background-color: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(208, 241, 227, 0.5), transparent 40%),
+    radial-gradient(circle at 80% 10%, rgba(204, 191, 255, 0.45), transparent 35%),
+    #f8fafc;
+}
