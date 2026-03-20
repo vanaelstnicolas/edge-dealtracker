@@ -2,6 +2,8 @@ from datetime import date, datetime, timezone
 from typing import Iterable
 from uuid import uuid4
 
+from app.config import settings
+from app.repositories.supabase import SupabaseStore
 from app.schemas.deal import DashboardKPIs, DealCreate, DealRead, DealStatus, DealUpdate
 from app.schemas.user_mapping import UserMapping
 
@@ -107,4 +109,10 @@ class InMemoryStore:
         return None
 
 
-store = InMemoryStore()
+if settings.supabase_url and (settings.supabase_service_role_key or settings.supabase_anon_key):
+    store = SupabaseStore(
+        supabase_url=settings.supabase_url,
+        supabase_key=settings.supabase_service_role_key or settings.supabase_anon_key,
+    )
+else:
+    store = InMemoryStore()

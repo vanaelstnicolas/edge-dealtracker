@@ -1,17 +1,50 @@
-import { mockDeals } from '../lib/mock-data'
+import { useEffect, useState } from 'react'
+import { fetchDeals } from '../lib/api'
+import type { Deal } from '../types/deal'
 
 function formatPct(value: number) {
   return `${Math.round(value * 100)}%`
 }
 
 export function DashboardPage() {
-  const active = mockDeals.filter((deal) => deal.status === 'active').length
-  const won = mockDeals.filter((deal) => deal.status === 'won').length
-  const lost = mockDeals.filter((deal) => deal.status === 'lost').length
+  const [deals, setDeals] = useState<Deal[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchDeals()
+      .then((data) => {
+        if (cancelled) {
+          return
+        }
+        setDeals(data)
+        setError(null)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) {
+          return
+        }
+        setError(err instanceof Error ? err.message : 'Erreur de chargement')
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const active = deals.filter((deal) => deal.status === 'active').length
+  const won = deals.filter((deal) => deal.status === 'won').length
+  const lost = deals.filter((deal) => deal.status === 'lost').length
   const totalClosed = won + lost
   const conversion = totalClosed > 0 ? won / totalClosed : 0
   const now = new Date().toISOString().slice(0, 10)
-  const lateDeals = mockDeals.filter((deal) => deal.status === 'active' && deal.deadline < now)
+  const lateDeals = deals.filter((deal) => deal.status === 'active' && deal.deadline < now)
 
   const cards = [
     { label: 'Dossiers actifs', value: active.toString() },
@@ -19,6 +52,14 @@ export function DashboardPage() {
     { label: 'Perdus', value: lost.toString() },
     { label: 'Conversion', value: formatPct(conversion) },
   ]
+
+  if (loading) {
+    return <p className="text-sm text-slate-500">Chargement du dashboard...</p>
+  }
+
+  if (error) {
+    return <p className="text-sm text-red-600">Erreur API: {error}</p>
+  }
 
   return (
     <div className="space-y-6">
@@ -53,7 +94,7 @@ export function DashboardPage() {
           <h2 className="font-heading text-lg font-semibold text-slate-900">Charge par collaborateur</h2>
           <div className="mt-4 space-y-3">
             {Object.entries(
-              mockDeals
+              deals
                 .filter((deal) => deal.status === 'active')
                 .reduce<Record<string, number>>((acc, deal) => {
                   acc[deal.owner] = (acc[deal.owner] || 0) + 1

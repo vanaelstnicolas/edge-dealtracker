@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 
 const links = [
   { path: '/dashboard', label: 'Dashboard' },
@@ -30,6 +31,15 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+      <button
+        type="button"
+        onClick={() => {
+          void supabase?.auth.signOut()
+        }}
+        className="mt-6 w-full rounded-xl border border-slate-200 px-3 py-2 text-left text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+      >
+        Se deconnecter
+      </button>
     </aside>
   )
 }

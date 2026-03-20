@@ -1,10 +1,48 @@
-import { useState } from 'react'
-import { mockMappings } from '../lib/mock-data'
+import { useEffect, useState } from 'react'
+import { fetchUsers, updateUserWhatsapp } from '../lib/api'
+import type { UserMapping } from '../types/deal'
 
 const e164Regex = /^\+[1-9]\d{6,14}$/
 
 export function SettingsPage() {
-  const [rows, setRows] = useState(mockMappings)
+  const [rows, setRows] = useState<UserMapping[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchUsers()
+      .then((data) => {
+        if (cancelled) {
+          return
+        }
+        setRows(data)
+        setError(null)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) {
+          return
+        }
+        setError(err instanceof Error ? err.message : 'Erreur de chargement')
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (loading) {
+    return <p className="text-sm text-slate-500">Chargement des utilisateurs...</p>
+  }
+
+  if (error) {
+    return <p className="text-sm text-red-600">Erreur API: {error}</p>
+  }
 
   return (
     <div className="space-y-5">
@@ -39,6 +77,21 @@ export function SettingsPage() {
                               item.id === row.id ? { ...item, whatsappNumber: event.target.value } : item,
                             ),
                           )
+                        }}
+                        onBlur={async () => {
+                          if (!e164Regex.test(row.whatsappNumber)) {
+                            return
+                          }
+                          try {
+                            const updated = await updateUserWhatsapp(row.id, row.whatsappNumber)
+                            setRows((current) =>
+                              current.map((item) =>
+                                item.id === updated.id ? { ...item, whatsappNumber: updated.whatsappNumber } : item,
+                              ),
+                            )
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Erreur de sauvegarde')
+                          }
                         }}
                         className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${
                           valid ? 'border-slate-200 focus:border-slate-400' : 'border-red-300 focus:border-red-500'

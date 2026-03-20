@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { StatusBadge } from '../components/StatusBadge'
-import { mockDeals } from '../lib/mock-data'
+import { fetchDeals } from '../lib/api'
+import type { Deal } from '../types/deal'
 import type { DealStatus } from '../types/deal'
 
 const statusOptions: Array<{ label: string; value: DealStatus | 'all' }> = [
@@ -11,12 +12,42 @@ const statusOptions: Array<{ label: string; value: DealStatus | 'all' }> = [
 ]
 
 export function PipelinePage() {
+  const [rows, setRows] = useState<Deal[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<DealStatus | 'all'>('all')
 
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchDeals()
+      .then((data) => {
+        if (cancelled) {
+          return
+        }
+        setRows(data)
+        setError(null)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) {
+          return
+        }
+        setError(err instanceof Error ? err.message : 'Erreur de chargement')
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const deals = useMemo(() => {
     const normalized = query.toLowerCase().trim()
-    return mockDeals
+    return rows
       .filter((deal) => (status === 'all' ? true : deal.status === status))
       .filter((deal) => {
         if (!normalized) {
@@ -29,9 +60,17 @@ export function PipelinePage() {
         )
       })
       .sort((a, b) => a.deadline.localeCompare(b.deadline))
-  }, [query, status])
+  }, [query, rows, status])
 
   const today = new Date().toISOString().slice(0, 10)
+
+  if (loading) {
+    return <p className="text-sm text-slate-500">Chargement du pipeline...</p>
+  }
+
+  if (error) {
+    return <p className="text-sm text-red-600">Erreur API: {error}</p>
+  }
 
   return (
     <div className="space-y-5">
