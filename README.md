@@ -33,6 +33,7 @@ GitHub Actions workflow runs on push and pull requests:
 
 - Backend: install deps + `pytest`
 - Backend smoke: boot API + verify `health` and protected route behavior
+- Business E2E smoke: run key auth/deals/settings journey test
 - Frontend: `npm ci` + `npm run build`
 
 Workflow file: `.github/workflows/ci.yml`

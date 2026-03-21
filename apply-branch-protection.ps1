@@ -18,7 +18,7 @@ $url = "https://api.github.com/repos/$Owner/$Repo/branches/$Branch/protection"
 $body = @{
   required_status_checks = @{
     strict   = $true
-    contexts = @("Backend Tests", "Backend Smoke", "Frontend Build")
+    contexts = @("Backend Tests", "Backend Smoke", "Business E2E Smoke", "Frontend Build")
   }
   enforce_admins = $true
   required_pull_request_reviews = @{
