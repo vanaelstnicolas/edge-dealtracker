@@ -98,3 +98,182 @@ Date: 2026-03-20
 1. Persist authenticated user profile into `users` (upsert on login) to align user IDs and deal ownership.
 2. Add a small backend test suite for repository + protected route auth behavior.
 3. Remove or restrict debug endpoint outside dev/staging environments.
+
+## Update - 2026-03-21
+
+### Completed
+
+- Auth flow now upserts authenticated user profile into `users` on bearer-token validation (`id`, `email`, `full_name`) for both Supabase and in-memory stores.
+- `UserMapping.whatsapp_number` is now nullable to support newly synced users before WhatsApp number assignment.
+- Frontend API mapping now safely handles nullable `whatsapp_number` values by normalizing `null` to an empty string.
+- Twilio debug parse endpoint is now restricted to `dev` and `staging` only.
+- Backend test suite added with pytest covering:
+  - protected route auth behavior (`/api/deals`)
+  - user profile sync on authenticated requests
+  - in-memory repository user upsert behavior
+  - debug endpoint environment guard
+
+### New next steps
+
+1. Add user scoping to dashboard KPIs so they reflect only authenticated owner data.
+2. Add Supabase integration tests (or mocked HTTP contract tests) for user upsert conflict scenarios.
+3. Add stricter auth on settings update to ensure only authorized roles can update other users.
+
+## Update - 2026-03-21 (KPI scoping)
+
+### Completed
+
+- `GET /api/dashboard/kpis` now scopes KPIs to the authenticated user (`owner_id = current_user.id`).
+- Repository KPI implementations now support owner scoping in both stores:
+  - `InMemoryStore.dashboard_kpis(owner_id=...)`
+  - `SupabaseStore.dashboard_kpis(owner_id=...)`
+- Added tests for KPI scoping behavior:
+  - route-level owner forwarding
+  - repository-level owner filtering
+
+### Remaining next steps
+
+1. Add Supabase integration tests (or mocked HTTP contract tests) for user upsert conflict scenarios.
+2. Add stricter auth on settings update to ensure only authorized roles can update other users.
+
+## Update - 2026-03-21 (settings authz + supabase tests)
+
+### Completed
+
+- Added mocked Supabase contract tests for `upsert_user_profile`:
+  - successful merge/upsert response
+  - conflict path raising `httpx.HTTPStatusError` (email unique violation)
+- Added stricter authorization on `PUT /api/settings/users/{user_id}`:
+  - user can update own mapping
+  - admin (`app_metadata.role == "admin"` or `app_metadata.roles` contains `admin`) can update other users
+  - non-admin cross-user update now returns `403 Forbidden owner scope`
+- Added route-level tests for settings authorization behavior.
+
+### New next steps
+
+1. Add explicit role management policy/documentation for who should have `admin` in Supabase metadata.
+2. Consider applying the same admin/self authorization pattern to `GET /api/settings/users` if full user list should be restricted.
+3. Add frontend UX feedback for `403` on settings update (clear permission error message).
+
+## Update - 2026-03-21 (settings listing + UX errors)
+
+### Completed
+
+- `GET /api/settings/users` is now role-aware:
+  - admin gets full user list
+  - non-admin gets only own user mapping
+- Added backend authorization tests for settings list scope:
+  - non-admin self-only listing
+  - admin full listing
+- Improved frontend settings error UX:
+  - `403 Forbidden owner scope` is now displayed as a clear permission message in French.
+
+### Remaining next steps
+
+1. Add explicit role management policy/documentation for `admin` assignment in Supabase metadata.
+2. Optionally enforce the same admin/self pattern on any future settings endpoints to keep authorization consistent.
+3. Add CI workflow to run backend tests + frontend build on every push/PR.
+
+## Update - 2026-03-21 (CI + role policy)
+
+### Completed
+
+- Added GitHub Actions CI workflow (`.github/workflows/ci.yml`) with:
+  - backend job: install requirements + run `pytest`
+  - frontend job: `npm ci` + `npm run build`
+- Added explicit Supabase role governance policy (`docs/roles-policy.md`) covering:
+  - `user` vs `admin` permissions
+  - assignment/revocation process
+  - operational security rules
+- Updated root README to reflect current architecture and point to CI/policy docs.
+
+### Remaining next steps
+
+1. Wire branch protection rules so PR merge requires CI checks to pass.
+2. Add role-change operational checklist in your internal runbook/tooling (ticket + audit trail).
+3. Add optional smoke/e2e checks in CI for key business paths (login, deals fetch, settings update).
+
+## Update - 2026-03-21 (Sprint 3/4 finalization package)
+
+### Completed
+
+- CI strengthened with backend smoke job in `.github/workflows/ci.yml`:
+  - starts API
+  - checks `/api/health` returns `200`
+  - checks `/api/deals` without token returns `401`
+- Branch protection helper scripts updated to require all checks:
+  - `Backend Tests`
+  - `Backend Smoke`
+  - `Frontend Build`
+- Added verification scripts for branch protection API state.
+- Added authorization matrix documentation (`docs/authz-matrix.md`).
+- Added release checklist documentation (`docs/release-checklist.md`).
+
+### Remaining external action
+
+1. Apply branch protection on the remote GitHub repository (cannot be executed locally without remote + GitHub CLI/token context in this environment).
+
+## Update - 2026-03-21 (business smoke/e2e CI)
+
+### Completed
+
+- Added a minimal business smoke/e2e backend test (`backend/tests/test_business_smoke_paths.py`) covering key paths in one flow:
+  - auth gate on protected endpoint (`/api/deals` returns `401` without bearer token)
+  - authenticated deals listing (`GET /api/deals`)
+  - authenticated settings listing scope (`GET /api/settings/users`)
+  - authenticated settings update (`PUT /api/settings/users/{user_id}`)
+- Added a dedicated CI job `Business E2E Smoke` in `.github/workflows/ci.yml` to run this journey test on every push/PR.
+
+### Remaining next steps
+
+1. Add a frontend browser-level smoke (Playwright) for the login screen rendering and auth redirect trigger.
+2. Decide whether branch protection should require `Business E2E Smoke` in addition to existing checks.
+
+## Update - 2026-03-21 (Excel pipeline import)
+
+### Completed
+
+- Added backend Excel import endpoint `POST /api/deals/import/excel` in `backend/app/api/routes/deals.py`.
+- Import supports `.xlsx` files and maps business columns to deals:
+  - `Cibles commerciales` -> `company`
+  - `Avancement` + `Autres actions/questions-commentaires` -> `description`
+  - `Actions commerciales` -> `action`
+- Import infers status from row text (`lost` for closure/negative markers, `won` for signature/win markers, else `active`).
+- Imported deals are always owner-scoped to authenticated user (`owner_id = current_user.id`) and get default deadline as current date.
+- Added frontend upload action in Pipeline page (`Importer Excel`) and automatic list refresh after import.
+- Added backend tests in `backend/tests/test_deals_excel_import.py` for happy path and invalid file type.
+
+### Notes
+
+- Current import handles first-sheet bulk onboarding and intentionally prioritizes robustness over strict row rejection for partially filled rows.
+
+## Update - 2026-03-21 (pipeline inline edit)
+
+### Completed
+
+- Added inline edition flow in Pipeline UI (`frontend/src/pages/PipelinePage.tsx`) to edit existing dossiers.
+- Editable fields now include:
+  - `description`
+  - `action`
+  - `deadline`
+  - `status`
+  - `owner`
+- Added frontend API update support in `frontend/src/lib/api.ts` via `PATCH /api/deals/{deal_id}`.
+- Extended backend deal update schema with optional `owner_id` (`backend/app/schemas/deal.py`).
+- Added authorization guard in `backend/app/api/routes/deals.py`:
+  - non-admin cannot reassign owner to another user
+  - admin can reassign owner
+- Added backend authz tests for owner reassignment:
+  - `backend/tests/test_deals_update_authz.py`
+
+## Update - 2026-03-21 (WhatsApp real test trigger)
+
+### Completed
+
+- Added secured endpoint `POST /api/settings/users/{user_id}/whatsapp/test` to send a real Twilio WhatsApp test message.
+- Authorization on test send follows existing policy:
+  - user can trigger test for self
+  - admin can trigger test for other users
+- Added Settings UI action `Tester WhatsApp` per user row (`frontend/src/pages/SettingsPage.tsx`).
+- Added API client helper `sendWhatsappTest` (`frontend/src/lib/api.ts`).
+- Added backend tests in `backend/tests/test_settings_whatsapp_test.py`.

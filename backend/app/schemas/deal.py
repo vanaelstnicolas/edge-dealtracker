@@ -30,6 +30,7 @@ class DealUpdate(BaseModel):
     action: Optional[str] = Field(default=None, min_length=2, max_length=240)
     deadline: Optional[date] = None
     status: Optional[DealStatus] = None
+    owner_id: Optional[str] = Field(default=None, min_length=2, max_length=120)
 
 
 class DealRead(DealBase):

@@ -15,28 +15,47 @@ type ApiUserMapping = {
   id: string
   full_name: string
   email: string
-  whatsapp_number: string
+  whatsapp_number: string | null
 }
 
 type RequestOptions = {
-  method?: 'GET' | 'PUT'
+  method?: 'GET' | 'PUT' | 'POST' | 'PATCH'
   body?: unknown
+  isFormData?: boolean
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api'
+const requestTimeoutMs = 12000
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const session = supabase ? (await supabase.auth.getSession()).data.session : null
   const accessToken = session?.access_token
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs)
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    method: options.method ?? 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  })
+  let response: Response
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      method: options.method ?? 'GET',
+      headers: {
+        ...(options.isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: options.body
+        ? options.isFormData
+          ? (options.body as FormData)
+          : JSON.stringify(options.body)
+        : undefined,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`Delai depasse (${requestTimeoutMs / 1000}s) pour ${path}`)
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
 
   if (!response.ok) {
     const message = await response.text()
@@ -46,13 +65,19 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return (await response.json()) as T
 }
 
+type DealImportResult = {
+  imported: number
+  skipped: number
+  errors: string[]
+}
+
 export async function fetchUsers(): Promise<UserMapping[]> {
   const rows = await request<ApiUserMapping[]>('/settings/users')
   return rows.map((row) => ({
     id: row.id,
     fullName: row.full_name,
     email: row.email,
-    whatsappNumber: row.whatsapp_number,
+    whatsappNumber: row.whatsapp_number ?? '',
   }))
 }
 
@@ -65,8 +90,15 @@ export async function updateUserWhatsapp(userId: string, whatsappNumber: string)
     id: row.id,
     fullName: row.full_name,
     email: row.email,
-    whatsappNumber: row.whatsapp_number,
+    whatsappNumber: row.whatsapp_number ?? '',
   }
+}
+
+export async function sendWhatsappTest(userId: string): Promise<{ messageSid: string }> {
+  const row = await request<{ result: string; message_sid: string }>(`/settings/users/${userId}/whatsapp/test`, {
+    method: 'POST',
+  })
+  return { messageSid: row.message_sid }
 }
 
 export async function fetchDeals(): Promise<Deal[]> {
@@ -82,7 +114,39 @@ export async function fetchDeals(): Promise<Deal[]> {
     description: deal.description,
     action: deal.action,
     deadline: deal.deadline,
+    ownerId: deal.owner_id,
     owner: ownerById.get(deal.owner_id) ?? deal.owner_id,
     status: deal.status,
   }))
+}
+
+type DealUpdatePayload = {
+  description: string
+  action: string
+  deadline: string
+  status: DealStatus
+  ownerId: string
+}
+
+export async function updateDeal(dealId: string, payload: DealUpdatePayload): Promise<void> {
+  await request<ApiDeal>(`/deals/${dealId}`, {
+    method: 'PATCH',
+    body: {
+      description: payload.description,
+      action: payload.action,
+      deadline: payload.deadline,
+      status: payload.status,
+      owner_id: payload.ownerId,
+    },
+  })
+}
+
+export function importDealsFromExcel(file: File): Promise<DealImportResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request<DealImportResult>('/deals/import/excel', {
+    method: 'POST',
+    body: formData,
+    isFormData: true,
+  })
 }

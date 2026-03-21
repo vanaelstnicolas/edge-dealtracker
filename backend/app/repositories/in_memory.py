@@ -73,15 +73,30 @@ class InMemoryStore:
         self.deals[deal_id] = updated
         return updated
 
-    def dashboard_kpis(self) -> DashboardKPIs:
-        active = sum(1 for deal in self.deals.values() if deal.status == DealStatus.active)
-        won = sum(1 for deal in self.deals.values() if deal.status == DealStatus.won)
-        lost = sum(1 for deal in self.deals.values() if deal.status == DealStatus.lost)
+    def dashboard_kpis(self, owner_id: str | None = None) -> DashboardKPIs:
+        rows: Iterable[DealRead] = self.deals.values()
+        if owner_id is not None:
+            rows = [deal for deal in rows if deal.owner_id == owner_id]
+
+        active = sum(1 for deal in rows if deal.status == DealStatus.active)
+        won = sum(1 for deal in rows if deal.status == DealStatus.won)
+        lost = sum(1 for deal in rows if deal.status == DealStatus.lost)
         conversion = won / (won + lost) if (won + lost) > 0 else 0.0
         return DashboardKPIs(active=active, won=won, lost=lost, conversion=conversion)
 
     def list_users(self) -> list[UserMapping]:
         return list(self.users.values())
+
+    def upsert_user_profile(self, user_id: str, email: str, full_name: str) -> UserMapping:
+        existing = self.users.get(user_id)
+        updated = UserMapping(
+            id=user_id,
+            email=email,
+            full_name=full_name,
+            whatsapp_number=existing.whatsapp_number if existing else None,
+        )
+        self.users[user_id] = updated
+        return updated
 
     def update_user_mapping(self, user_id: str, whatsapp_number: str) -> UserMapping | None:
         user = self.users.get(user_id)
@@ -93,7 +108,7 @@ class InMemoryStore:
 
     def find_user_by_whatsapp(self, phone: str) -> UserMapping | None:
         for user in self.users.values():
-            if user.whatsapp_number == phone:
+            if user.whatsapp_number is not None and user.whatsapp_number == phone:
                 return user
         return None
 

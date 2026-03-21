@@ -85,8 +85,12 @@ class SupabaseStore:
             return None
         return DealRead.model_validate(rows[0])
 
-    def dashboard_kpis(self) -> DashboardKPIs:
-        rows = self._get("/deals", params={"select": "status"})
+    def dashboard_kpis(self, owner_id: str | None = None) -> DashboardKPIs:
+        params = {"select": "status"}
+        if owner_id is not None:
+            params["owner_id"] = f"eq.{owner_id}"
+
+        rows = self._get("/deals", params=params)
         active = sum(1 for row in rows if row["status"] == DealStatus.active.value)
         won = sum(1 for row in rows if row["status"] == DealStatus.won.value)
         lost = sum(1 for row in rows if row["status"] == DealStatus.lost.value)
@@ -99,6 +103,17 @@ class SupabaseStore:
             params={"select": "id,full_name,email,whatsapp_number", "order": "created_at.asc"},
         )
         return [UserMapping.model_validate(row) for row in rows]
+
+    def upsert_user_profile(self, user_id: str, email: str, full_name: str) -> UserMapping:
+        response = self._client.post(
+            "/users",
+            params={"on_conflict": "id", "select": "id,full_name,email,whatsapp_number"},
+            headers={"Prefer": "resolution=merge-duplicates,return=representation"},
+            json={"id": user_id, "email": email, "full_name": full_name},
+        )
+        response.raise_for_status()
+        rows = response.json()
+        return UserMapping.model_validate(rows[0])
 
     def update_user_mapping(self, user_id: str, whatsapp_number: str) -> UserMapping | None:
         response = self._client.patch(

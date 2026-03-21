@@ -6,6 +6,7 @@ export type Deal = {
   description: string
   action: string
   deadline: string
+  ownerId: string
   owner: string
   status: DealStatus
 }

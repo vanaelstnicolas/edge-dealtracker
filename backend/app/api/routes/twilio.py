@@ -4,9 +4,10 @@ import hmac
 import json
 import logging
 from datetime import date
+from xml.sax.saxutils import escape
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app.config import settings
@@ -110,6 +111,12 @@ def _is_valid_twilio_signature(request_url: str, params: dict[str, str], signatu
     return hmac.compare_digest(expected, signature)
 
 
+def _twiml_message(message: str) -> Response:
+    safe_message = escape(message)
+    body = f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{safe_message}</Message></Response>'
+    return Response(content=body, media_type="application/xml")
+
+
 def _handle_text_command(owner_id: str, body: str) -> tuple[str, str]:
     command = body.strip()
 
@@ -165,7 +172,7 @@ def _handle_text_command(owner_id: str, body: str) -> tuple[str, str]:
 
 
 @router.post("/twilio")
-async def receive_twilio_webhook(request: Request) -> dict[str, str]:
+async def receive_twilio_webhook(request: Request) -> Response:
     form = await request.form()
     data = {key: str(value) for key, value in form.multi_items()}
     signature = request.headers.get("X-Twilio-Signature", "")
@@ -184,11 +191,7 @@ async def receive_twilio_webhook(request: Request) -> dict[str, str]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown WhatsApp sender")
 
     if media_url:
-        return {
-            "result": "received_audio",
-            "message": "Audio recu. Transcription IA en cours.",
-            "owner_id": user.id,
-        }
+        return _twiml_message("Audio recu. Transcription IA en cours.")
 
     if not body.strip():
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Empty message")
@@ -206,16 +209,13 @@ async def receive_twilio_webhook(request: Request) -> dict[str, str]:
         },
     )
     result, message = _handle_text_command(owner_id=user.id, body=command_body)
-    return {
-        "result": result,
-        "message": message,
-        "owner_id": user.id,
-    }
+    logger.info("twilio_command_result", extra={"owner_id": user.id, "result": result})
+    return _twiml_message(message)
 
 
 @router.post("/twilio/debug/parse")
 def debug_parse_twilio_message(payload: TwilioNluDebugRequest) -> dict[str, str]:
-    if settings.environment.lower() == "prod":
+    if settings.environment.lower() not in {"dev", "staging"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     nlu_command = _nlu_command_from_openai(payload.message)
