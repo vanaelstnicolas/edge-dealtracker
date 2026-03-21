@@ -212,3 +212,19 @@ Date: 2026-03-20
 ### Remaining external action
 
 1. Apply branch protection on the remote GitHub repository (cannot be executed locally without remote + GitHub CLI/token context in this environment).
+
+## Update - 2026-03-21 (business smoke/e2e CI)
+
+### Completed
+
+- Added a minimal business smoke/e2e backend test (`backend/tests/test_business_smoke_paths.py`) covering key paths in one flow:
+  - auth gate on protected endpoint (`/api/deals` returns `401` without bearer token)
+  - authenticated deals listing (`GET /api/deals`)
+  - authenticated settings listing scope (`GET /api/settings/users`)
+  - authenticated settings update (`PUT /api/settings/users/{user_id}`)
+- Added a dedicated CI job `Business E2E Smoke` in `.github/workflows/ci.yml` to run this journey test on every push/PR.
+
+### Remaining next steps
+
+1. Add a frontend browser-level smoke (Playwright) for the login screen rendering and auth redirect trigger.
+2. Decide whether branch protection should require `Business E2E Smoke` in addition to existing checks.

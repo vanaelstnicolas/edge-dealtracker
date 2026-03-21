@@ -68,6 +68,26 @@ jobs:
           code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/deals)
           test "$code" = "401"
 
+  business-e2e-smoke:
+    name: Business E2E Smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run business smoke journey tests
+        working-directory: backend
+        run: pytest tests/test_business_smoke_paths.py -q
+
   frontend:
     name: Frontend Build
     runs-on: ubuntu-latest
