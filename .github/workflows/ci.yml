@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
 
       - name: Run backend tests
         working-directory: backend
-        run: pytest
+        run: PYTHONPATH=. pytest
 
   backend-smoke:
     name: Backend Smoke
@@ -86,7 +86,7 @@ jobs:
 
       - name: Run business smoke journey tests
         working-directory: backend
-        run: pytest tests/test_business_smoke_paths.py -q
+        run: PYTHONPATH=. pytest tests/test_business_smoke_paths.py -q
 
   frontend:
     name: Frontend Build
