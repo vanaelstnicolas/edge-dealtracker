@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchUsers, updateUserWhatsapp } from '../lib/api'
+import { fetchUsers, sendWhatsappTest, updateUserWhatsapp } from '../lib/api'
 import type { UserMapping } from '../types/deal'
 
 const e164Regex = /^\+[1-9]\d{6,14}$/
@@ -21,6 +21,8 @@ export function SettingsPage() {
   const [rows, setRows] = useState<UserMapping[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [sendingTestFor, setSendingTestFor] = useState<string | null>(null)
+  const [testMessage, setTestMessage] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -111,6 +113,26 @@ export function SettingsPage() {
                         }`}
                       />
                       {!valid && <p className="mt-1 text-xs text-red-600">Format attendu: +33612345678</p>}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setError(null)
+                          setTestMessage(null)
+                          setSendingTestFor(row.id)
+                          try {
+                            const result = await sendWhatsappTest(row.id)
+                            setTestMessage(`Message de test envoye (sid: ${result.messageSid || 'n/a'})`)
+                          } catch (err) {
+                            setError(getSettingsErrorMessage(err))
+                          } finally {
+                            setSendingTestFor(null)
+                          }
+                        }}
+                        disabled={!valid || sendingTestFor === row.id}
+                        className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {sendingTestFor === row.id ? 'Envoi...' : 'Tester WhatsApp'}
+                      </button>
                     </td>
                   </tr>
                 )
@@ -119,6 +141,7 @@ export function SettingsPage() {
           </table>
         </div>
       </section>
+      {testMessage ? <p className="text-sm text-emerald-700">{testMessage}</p> : null}
     </div>
   )
 }

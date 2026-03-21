@@ -265,3 +265,15 @@ Date: 2026-03-20
   - admin can reassign owner
 - Added backend authz tests for owner reassignment:
   - `backend/tests/test_deals_update_authz.py`
+
+## Update - 2026-03-21 (WhatsApp real test trigger)
+
+### Completed
+
+- Added secured endpoint `POST /api/settings/users/{user_id}/whatsapp/test` to send a real Twilio WhatsApp test message.
+- Authorization on test send follows existing policy:
+  - user can trigger test for self
+  - admin can trigger test for other users
+- Added Settings UI action `Tester WhatsApp` per user row (`frontend/src/pages/SettingsPage.tsx`).
+- Added API client helper `sendWhatsappTest` (`frontend/src/lib/api.ts`).
+- Added backend tests in `backend/tests/test_settings_whatsapp_test.py`.

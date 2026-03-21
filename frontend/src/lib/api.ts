@@ -94,6 +94,13 @@ export async function updateUserWhatsapp(userId: string, whatsappNumber: string)
   }
 }
 
+export async function sendWhatsappTest(userId: string): Promise<{ messageSid: string }> {
+  const row = await request<{ result: string; message_sid: string }>(`/settings/users/${userId}/whatsapp/test`, {
+    method: 'POST',
+  })
+  return { messageSid: row.message_sid }
+}
+
 export async function fetchDeals(): Promise<Deal[]> {
   const [deals, users] = await Promise.all([
     request<ApiDeal[]>('/deals'),
