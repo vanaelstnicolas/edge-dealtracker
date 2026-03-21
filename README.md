@@ -1,10 +1,13 @@
 # DealTracker MVP
 
-Initial implementation for Sprint 0/1:
+Current implementation status:
 
-- React + Tailwind frontend with 3 pages (`/dashboard`, `/pipeline`, `/settings`)
-- FastAPI backend with foundational API routes
+- React + Tailwind frontend (`/dashboard`, `/pipeline`, `/settings`, `/login`)
+- FastAPI backend APIs with bearer auth enforcement on protected routes
+- Supabase-backed repository with fallback to in-memory storage for local dev
+- Microsoft Entra login integrated through Supabase Auth
 - Supabase SQL migration for initial schema (`users`, `deals`)
+- Twilio webhook with OpenAI NLU parsing + fallback command parser
 
 ## Frontend
 
@@ -24,9 +27,23 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-## Next steps
+## CI
 
-1. Plug backend repository layer to Supabase
-2. Add Supabase Auth (email/password)
-3. Secure Twilio webhook signature validation
-4. Connect frontend pages to backend API
+GitHub Actions workflow runs on push and pull requests:
+
+- Backend: install deps + `pytest`
+- Backend smoke: boot API + verify `health` and protected route behavior
+- Frontend: `npm ci` + `npm run build`
+
+Workflow file: `.github/workflows/ci.yml`
+
+## Role policy
+
+Supabase role assignment policy for `user`/`admin` is documented in:
+
+- `docs/roles-policy.md`
+
+## Security and release docs
+
+- Authorization matrix: `docs/authz-matrix.md`
+- Release checklist: `docs/release-checklist.md`

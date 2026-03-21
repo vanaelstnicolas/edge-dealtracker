@@ -10,5 +10,5 @@ router = APIRouter()
 
 
 @router.get("/kpis", response_model=DashboardKPIs)
-def get_kpis(_current_user: dict[str, Any] = Depends(get_current_user)) -> DashboardKPIs:
-    return store.dashboard_kpis()
+def get_kpis(current_user: dict[str, Any] = Depends(get_current_user)) -> DashboardKPIs:
+    return store.dashboard_kpis(owner_id=str(current_user["id"]))

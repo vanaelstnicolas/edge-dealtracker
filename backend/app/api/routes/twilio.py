@@ -215,7 +215,7 @@ async def receive_twilio_webhook(request: Request) -> dict[str, str]:
 
 @router.post("/twilio/debug/parse")
 def debug_parse_twilio_message(payload: TwilioNluDebugRequest) -> dict[str, str]:
-    if settings.environment.lower() == "prod":
+    if settings.environment.lower() not in {"dev", "staging"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     nlu_command = _nlu_command_from_openai(payload.message)

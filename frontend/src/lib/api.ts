@@ -15,7 +15,7 @@ type ApiUserMapping = {
   id: string
   full_name: string
   email: string
-  whatsapp_number: string
+  whatsapp_number: string | null
 }
 
 type RequestOptions = {
@@ -52,7 +52,7 @@ export async function fetchUsers(): Promise<UserMapping[]> {
     id: row.id,
     fullName: row.full_name,
     email: row.email,
-    whatsappNumber: row.whatsapp_number,
+    whatsappNumber: row.whatsapp_number ?? '',
   }))
 }
 
@@ -65,7 +65,7 @@ export async function updateUserWhatsapp(userId: string, whatsappNumber: string)
     id: row.id,
     fullName: row.full_name,
     email: row.email,
-    whatsappNumber: row.whatsapp_number,
+    whatsappNumber: row.whatsapp_number ?? '',
   }
 }
 

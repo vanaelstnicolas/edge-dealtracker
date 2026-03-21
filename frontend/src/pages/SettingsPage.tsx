@@ -4,6 +4,19 @@ import type { UserMapping } from '../types/deal'
 
 const e164Regex = /^\+[1-9]\d{6,14}$/
 
+function getSettingsErrorMessage(error: unknown): string {
+  const fallback = 'Erreur de sauvegarde'
+  if (!(error instanceof Error)) {
+    return fallback
+  }
+
+  if (error.message.includes('Forbidden owner scope')) {
+    return "Tu n'as pas les droits pour modifier cet utilisateur."
+  }
+
+  return error.message || fallback
+}
+
 export function SettingsPage() {
   const [rows, setRows] = useState<UserMapping[]>([])
   const [loading, setLoading] = useState(true)
@@ -24,7 +37,7 @@ export function SettingsPage() {
         if (cancelled) {
           return
         }
-        setError(err instanceof Error ? err.message : 'Erreur de chargement')
+        setError(getSettingsErrorMessage(err))
       })
       .finally(() => {
         if (!cancelled) {
@@ -90,7 +103,7 @@ export function SettingsPage() {
                               ),
                             )
                           } catch (err) {
-                            setError(err instanceof Error ? err.message : 'Erreur de sauvegarde')
+                            setError(getSettingsErrorMessage(err))
                           }
                         }}
                         className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${
