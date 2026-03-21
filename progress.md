@@ -228,3 +228,40 @@ Date: 2026-03-20
 
 1. Add a frontend browser-level smoke (Playwright) for the login screen rendering and auth redirect trigger.
 2. Decide whether branch protection should require `Business E2E Smoke` in addition to existing checks.
+
+## Update - 2026-03-21 (Excel pipeline import)
+
+### Completed
+
+- Added backend Excel import endpoint `POST /api/deals/import/excel` in `backend/app/api/routes/deals.py`.
+- Import supports `.xlsx` files and maps business columns to deals:
+  - `Cibles commerciales` -> `company`
+  - `Avancement` + `Autres actions/questions-commentaires` -> `description`
+  - `Actions commerciales` -> `action`
+- Import infers status from row text (`lost` for closure/negative markers, `won` for signature/win markers, else `active`).
+- Imported deals are always owner-scoped to authenticated user (`owner_id = current_user.id`) and get default deadline as current date.
+- Added frontend upload action in Pipeline page (`Importer Excel`) and automatic list refresh after import.
+- Added backend tests in `backend/tests/test_deals_excel_import.py` for happy path and invalid file type.
+
+### Notes
+
+- Current import handles first-sheet bulk onboarding and intentionally prioritizes robustness over strict row rejection for partially filled rows.
+
+## Update - 2026-03-21 (pipeline inline edit)
+
+### Completed
+
+- Added inline edition flow in Pipeline UI (`frontend/src/pages/PipelinePage.tsx`) to edit existing dossiers.
+- Editable fields now include:
+  - `description`
+  - `action`
+  - `deadline`
+  - `status`
+  - `owner`
+- Added frontend API update support in `frontend/src/lib/api.ts` via `PATCH /api/deals/{deal_id}`.
+- Extended backend deal update schema with optional `owner_id` (`backend/app/schemas/deal.py`).
+- Added authorization guard in `backend/app/api/routes/deals.py`:
+  - non-admin cannot reassign owner to another user
+  - admin can reassign owner
+- Added backend authz tests for owner reassignment:
+  - `backend/tests/test_deals_update_authz.py`
