@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { Sidebar } from './components/Sidebar'
+import { prefetchCoreData } from './lib/api'
 import { supabase } from './lib/supabase'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
@@ -43,6 +44,13 @@ function App() {
       subscription.unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    if (!session) {
+      return
+    }
+    prefetchCoreData()
+  }, [session])
 
   if (loading) {
     return <p className="p-6 text-sm text-slate-500">Verification de session...</p>

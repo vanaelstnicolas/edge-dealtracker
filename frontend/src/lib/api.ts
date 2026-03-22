@@ -26,10 +26,65 @@ type RequestOptions = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api'
 const requestTimeoutMs = 12000
+const getCacheTtlMs = 30000
+const getCache = new Map<string, { expiresAt: number; data: unknown }>()
+const inflightGetRequests = new Map<string, Promise<unknown>>()
+
+function cacheKey(path: string, accessToken: string | undefined): string {
+  return `${accessToken ?? 'anon'}::${path}`
+}
+
+function toFirstNameFromEmailOrName(email: string, fallbackName: string): string {
+  const localPart = email.split('@')[0]?.trim() ?? ''
+  const emailToken = localPart.split(/[._-]/)[0]?.trim()
+  const raw = emailToken || fallbackName.split(/\s+/)[0]?.trim() || fallbackName
+  if (!raw) {
+    return fallbackName
+  }
+  return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()
+}
+
+function invalidateGetCache(prefixes: string[]): void {
+  for (const key of getCache.keys()) {
+    if (prefixes.some((prefix) => key.endsWith(`::${prefix}`))) {
+      getCache.delete(key)
+    }
+  }
+}
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const session = supabase ? (await supabase.auth.getSession()).data.session : null
   const accessToken = session?.access_token
+  const method = options.method ?? 'GET'
+
+  if (method === 'GET') {
+    const key = cacheKey(path, accessToken)
+    const cached = getCache.get(key)
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data as T
+    }
+
+    const inflight = inflightGetRequests.get(key)
+    if (inflight) {
+      return (await inflight) as T
+    }
+
+    const pending = performRequest<T>(path, options, accessToken).then((result) => {
+      getCache.set(key, { expiresAt: Date.now() + getCacheTtlMs, data: result })
+      return result
+    })
+    inflightGetRequests.set(key, pending as Promise<unknown>)
+    try {
+      return await pending
+    } finally {
+      inflightGetRequests.delete(key)
+    }
+  }
+
+  return performRequest<T>(path, options, accessToken)
+}
+
+async function performRequest<T>(path: string, options: RequestOptions, accessToken: string | undefined): Promise<T> {
   const controller = new AbortController()
   const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs)
 
@@ -71,6 +126,20 @@ type DealImportResult = {
   errors: string[]
 }
 
+export type ActionSummaryItem = {
+  company: string
+  action: string
+  deadline: string
+  status: string
+}
+
+export type MyActionSummary = {
+  ownerId: string
+  ownerName: string
+  summary: string
+  items: ActionSummaryItem[]
+}
+
 export async function fetchUsers(): Promise<UserMapping[]> {
   const rows = await request<ApiUserMapping[]>('/settings/users')
   return rows.map((row) => ({
@@ -86,6 +155,7 @@ export async function updateUserWhatsapp(userId: string, whatsappNumber: string)
     method: 'PUT',
     body: { whatsapp_number: whatsappNumber },
   })
+  invalidateGetCache(['/settings/users', '/deals'])
   return {
     id: row.id,
     fullName: row.full_name,
@@ -107,7 +177,7 @@ export async function fetchDeals(): Promise<Deal[]> {
     request<ApiUserMapping[]>('/settings/users'),
   ])
 
-  const ownerById = new Map(users.map((user) => [user.id, user.full_name]))
+  const ownerById = new Map(users.map((user) => [user.id, toFirstNameFromEmailOrName(user.email, user.full_name)]))
   return deals.map((deal) => ({
     id: deal.id,
     company: deal.company,
@@ -139,6 +209,29 @@ export async function updateDeal(dealId: string, payload: DealUpdatePayload): Pr
       owner_id: payload.ownerId,
     },
   })
+  invalidateGetCache(['/deals'])
+}
+
+export async function fetchMyActionSummary(): Promise<MyActionSummary> {
+  const row = await request<{
+    owner_id: string
+    owner_name: string
+    summary: string
+    items: ActionSummaryItem[]
+  }>('/summary/me')
+  return {
+    ownerId: row.owner_id,
+    ownerName: row.owner_name,
+    summary: row.summary,
+    items: row.items,
+  }
+}
+
+export async function sendMyActionSummary(): Promise<{ whatsapp: string; email: string; summary: string }> {
+  const row = await request<{ whatsapp: string; email: string; summary: string }>('/summary/me/send', {
+    method: 'POST',
+  })
+  return row
 }
 
 export function importDealsFromExcel(file: File): Promise<DealImportResult> {
@@ -148,5 +241,13 @@ export function importDealsFromExcel(file: File): Promise<DealImportResult> {
     method: 'POST',
     body: formData,
     isFormData: true,
+  }).then((result) => {
+    invalidateGetCache(['/deals'])
+    return result
   })
+}
+
+export function prefetchCoreData(): void {
+  void fetchDeals()
+  void fetchUsers()
 }

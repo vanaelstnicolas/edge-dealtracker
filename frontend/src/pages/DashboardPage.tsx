@@ -1,15 +1,49 @@
 import { useEffect, useState } from 'react'
-import { fetchDeals } from '../lib/api'
+import { fetchDeals, fetchMyActionSummary, sendMyActionSummary, type MyActionSummary } from '../lib/api'
 import type { Deal } from '../types/deal'
 
 function formatPct(value: number) {
   return `${Math.round(value * 100)}%`
 }
 
+function ownerFirstName(owner: string): string {
+  const normalized = owner.trim()
+  if (!normalized) {
+    return owner
+  }
+
+  const base = normalized.includes('@') ? normalized.split('@')[0] : normalized
+  const token = base.split(/[._\-\s]+/)[0]
+  if (!token) {
+    return normalized
+  }
+
+  return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase()
+}
+
+function channelStatusLabel(channel: 'whatsapp' | 'email', status: string): string {
+  const channelLabel = channel === 'whatsapp' ? 'WhatsApp' : 'Email'
+  if (status === 'sent') {
+    return `${channelLabel} envoye`
+  }
+  if (status === 'not_configured') {
+    return `${channelLabel} non configure`
+  }
+  if (status === 'skipped') {
+    return `${channelLabel} ignore`
+  }
+  return `${channelLabel} statut: ${status}`
+}
+
 export function DashboardPage() {
   const [deals, setDeals] = useState<Deal[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [summary, setSummary] = useState<MyActionSummary | null>(null)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [summaryStatus, setSummaryStatus] = useState<string | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [sendingSummary, setSendingSummary] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -84,7 +118,7 @@ export function DashboardPage() {
             {lateDeals.length === 0 && <li>Aucun retard detecte.</li>}
             {lateDeals.map((deal) => (
               <li key={deal.id}>
-                {deal.company} - echeance {deal.deadline} - owner {deal.owner}
+                {deal.company} - echeance {deal.deadline} - owner {ownerFirstName(deal.owner)}
               </li>
             ))}
           </ul>
@@ -116,6 +150,76 @@ export function DashboardPage() {
             ))}
           </div>
         </article>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-heading text-lg font-semibold text-slate-900">Mon resume to-do</h2>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={summaryLoading}
+              onClick={async () => {
+                setSummaryLoading(true)
+                setSummaryError(null)
+                setSummaryStatus(null)
+                try {
+                  const next = await fetchMyActionSummary()
+                  setSummary(next)
+                } catch (err: unknown) {
+                  setSummaryError(err instanceof Error ? err.message : 'Impossible de charger le resume')
+                } finally {
+                  setSummaryLoading(false)
+                }
+              }}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
+            >
+              {summaryLoading ? 'Chargement...' : 'Afficher mon resume'}
+            </button>
+            <button
+              type="button"
+              disabled={sendingSummary}
+              onClick={async () => {
+                setSendingSummary(true)
+                setSummaryError(null)
+                setSummaryStatus(null)
+                try {
+                  const result = await sendMyActionSummary()
+                  setSummaryStatus(
+                    `Resume envoye - ${channelStatusLabel('whatsapp', result.whatsapp)} - ${channelStatusLabel('email', result.email)}`,
+                  )
+                } catch (err: unknown) {
+                  setSummaryError(err instanceof Error ? err.message : 'Impossible d envoyer le resume')
+                } finally {
+                  setSendingSummary(false)
+                }
+              }}
+              className="rounded-xl bg-edge-primary px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
+            >
+              {sendingSummary ? 'Envoi...' : 'Envoyer sur WhatsApp + Email'}
+            </button>
+          </div>
+        </div>
+
+        {summaryStatus ? <p className="mt-3 text-sm text-emerald-700">{summaryStatus}</p> : null}
+        {summaryError ? <p className="mt-3 text-sm text-red-600">{summaryError}</p> : null}
+
+        {summary ? (
+          <div className="mt-4 space-y-2 text-sm text-slate-700">
+            <p className="font-medium text-slate-900">{summary.summary}</p>
+            {summary.items.length === 0 ? (
+              <p>Aucune action active.</p>
+            ) : (
+              <ul className="list-disc space-y-1 pl-5">
+                {summary.items.map((item, index) => (
+                  <li key={`${item.company}-${index}`}>
+                    {item.company} - {item.action} (deadline {item.deadline})
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : null}
       </section>
     </div>
   )
