@@ -12,9 +12,19 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ""
     twilio_whatsapp_number: str = ""
     mistral_api_key: str = ""
-    mistral_transcribe_model: str = "mistral-voxtral-mini-transcribe-v2"
+    mistral_transcribe_model: str = "voxtral-mini-latest"
     openai_api_key: str = ""
     openai_nlu_model: str = "gpt-5-mini"
+    openai_transcribe_model: str = "whisper-1"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    weekly_summary_scheduler_enabled: bool = True
+    weekly_summary_timezone: str = "Europe/Brussels"
+    weekly_summary_day_of_week: str = "mon"
+    weekly_summary_hour: int = 9
 
     model_config = SettingsConfigDict(env_file=(".env.local", ".env"), env_file_encoding="utf-8")
 

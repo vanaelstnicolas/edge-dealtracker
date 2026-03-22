@@ -24,6 +24,28 @@ type DealEditDraft = {
   ownerId: string
 }
 
+function capitalizeFirst(value: string): string {
+  if (!value) {
+    return value
+  }
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase()
+}
+
+function firstNameFromUser(user: UserMapping): string {
+  const emailLocalPart = user.email.split('@')[0] ?? ''
+  const emailBased = emailLocalPart.split(/[._-]/)[0]?.trim()
+  if (emailBased) {
+    return capitalizeFirst(emailBased)
+  }
+
+  const nameBased = user.fullName.trim().split(/\s+/)[0]
+  if (nameBased) {
+    return capitalizeFirst(nameBased)
+  }
+
+  return user.id
+}
+
 export function PipelinePage() {
   const [rows, setRows] = useState<Deal[]>([])
   const [users, setUsers] = useState<UserMapping[]>([])
@@ -112,6 +134,22 @@ export function PipelinePage() {
     void loadDeals().catch(() => undefined)
   }, [])
 
+  const ownerOptions = useMemo(() => {
+    const firstNameCounts = new Map<string, number>()
+    for (const user of users) {
+      const firstName = firstNameFromUser(user)
+      firstNameCounts.set(firstName, (firstNameCounts.get(firstName) ?? 0) + 1)
+    }
+
+    return users.map((user) => {
+      const firstName = firstNameFromUser(user)
+      const label = (firstNameCounts.get(firstName) ?? 0) > 1 ? `${firstName} (${user.fullName})` : firstName
+      return { value: user.id, label }
+    })
+  }, [users])
+
+  const ownerLabelById = useMemo(() => new Map(ownerOptions.map((option) => [option.value, option.label])), [ownerOptions])
+
   const deals = useMemo(() => {
     const normalized = query.toLowerCase().trim()
     return rows
@@ -123,11 +161,11 @@ export function PipelinePage() {
         return (
           deal.company.toLowerCase().includes(normalized) ||
           deal.description.toLowerCase().includes(normalized) ||
-          deal.owner.toLowerCase().includes(normalized)
+          (ownerLabelById.get(deal.ownerId) ?? deal.owner).toLowerCase().includes(normalized)
         )
       })
       .sort((a, b) => a.deadline.localeCompare(b.deadline))
-  }, [query, rows, status])
+  }, [query, rows, status, ownerLabelById])
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -211,7 +249,7 @@ export function PipelinePage() {
                     >
                       {deal.deadline}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{deal.owner}</td>
+                    <td className="px-4 py-3 text-slate-700">{ownerLabelById.get(deal.ownerId) ?? deal.owner}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={deal.status} />
                     </td>
@@ -283,9 +321,9 @@ export function PipelinePage() {
                               onChange={(event) => setEditDraft({ ...editDraft, ownerId: event.target.value })}
                               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                             >
-                              {users.map((user) => (
-                                <option key={user.id} value={user.id}>
-                                  {user.fullName}
+                              {ownerOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
                                 </option>
                               ))}
                             </select>

@@ -3,7 +3,10 @@ import hashlib
 import hmac
 import json
 import logging
-from datetime import date
+import re
+import unicodedata
+from datetime import date, timedelta
+from io import BytesIO
 from xml.sax.saxutils import escape
 
 import httpx
@@ -13,6 +16,8 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.repositories.in_memory import store
 from app.schemas.deal import DealCreate, DealStatus, DealUpdate
+from app.services.action_summary import build_owner_summary_text
+from app.services.notifications import send_whatsapp_message
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -42,8 +47,11 @@ def _nlu_command_from_openai(message: str) -> str | None:
 
     system_prompt = (
         "Tu extrais des intentions CRM. Retourne uniquement un JSON valide avec la forme: "
-        '{"intent":"create|update|close|unknown","company":"","description":"","action":"","deadline":"YYYY-MM-DD","status":"won|lost"}. '
-        "Laisse les champs inutiles en chaine vide."
+        '{"intent":"create|update|close|summary|unknown","company":"","description":"","action":"","deadline":"YYYY-MM-DD","status":"won|lost"}. '
+        "Interprete aussi les messages naturels (ex: opportunite chez X, rencontre le 10/4). "
+        "Si date fournie en format jour/mois, convertis-la en YYYY-MM-DD avec l'annee en cours. "
+        "Si action manquante pour create, propose une action courte. "
+        "Si deadline absente, laisse vide."
     )
     user_prompt = f"Message utilisateur: {message}"
 
@@ -82,7 +90,16 @@ def _nlu_command_from_openai(message: str) -> str | None:
     deadline = str(payload.get("deadline", "")).strip()
     status_value = str(payload.get("status", "")).strip().lower()
 
-    if intent == "create" and company and description and action and deadline:
+    if intent == "summary":
+        return "summary"
+
+    if intent == "create" and company:
+        if not description:
+            description = "Opportunite detectee via WhatsApp"
+        if not action:
+            action = "Planifier prochain contact"
+        if not deadline:
+            deadline = (date.today() + timedelta(days=7)).isoformat()
         return f"create {company}|{description}|{action}|{deadline}"
     if intent == "update" and company and action:
         return f"update {company}|{action}"
@@ -99,7 +116,111 @@ def _command_kind(command: str) -> str:
         return "update"
     if lowered.startswith("close "):
         return "close"
+    if lowered.startswith("summary") or lowered.startswith("resume") or lowered.startswith("todo"):
+        return "summary"
     return "unknown"
+
+
+def _normalize_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
+
+
+def _parse_french_date_to_iso(raw_text: str) -> str | None:
+    match = re.search(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b", raw_text)
+    if not match:
+        return None
+
+    day = int(match.group(1))
+    month = int(match.group(2))
+    year_part = match.group(3)
+    year = int(year_part) if year_part else date.today().year
+    if year < 100:
+        year += 2000
+
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return None
+
+
+def _heuristic_command_from_natural_text(message: str) -> str | None:
+    raw = message.strip()
+    if not raw:
+        return None
+
+    normalized = _normalize_text(raw)
+    if "opportunit" not in normalized and "prospect" not in normalized:
+        return None
+
+    company_match = re.search(r"\bchez\s+([^\.,;\n]+)", raw, flags=re.IGNORECASE)
+    if not company_match:
+        return None
+
+    company_candidate = company_match.group(1)
+    company = re.split(r"\b(pour|avec|sur|et|qui|que)\b", company_candidate, flags=re.IGNORECASE)[0].strip(" -")
+    if not company:
+        return None
+
+    deadline = _parse_french_date_to_iso(raw) or (date.today() + timedelta(days=7)).isoformat()
+    if any(keyword in normalized for keyword in ["rencontre", "rdv", "rendez-vous", "meeting"]):
+        action = "Preparer la rencontre client"
+    else:
+        action = "Planifier le prochain contact"
+
+    description = raw[:240]
+    return f"create {company}|{description}|{action}|{deadline}"
+
+
+def _transcribe_audio_from_twilio_media(media_url: str, content_type: str | None = None) -> str | None:
+    if not settings.openai_api_key:
+        return None
+
+    account_sid = settings.twilio_account_sid.strip()
+    auth_token = settings.twilio_auth_token.strip()
+    if not account_sid or not auth_token:
+        return None
+
+    try:
+        media_response = httpx.get(
+            media_url,
+            auth=(account_sid, auth_token),
+            timeout=20.0,
+            follow_redirects=True,
+        )
+        media_response.raise_for_status()
+        audio_bytes = media_response.content
+
+        files = {
+            "file": (
+                "voice-message.ogg",
+                BytesIO(audio_bytes),
+                content_type or "audio/ogg",
+            )
+        }
+        transcription_response = httpx.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {settings.openai_api_key}"},
+            data={"model": settings.openai_transcribe_model},
+            files=files,
+            timeout=30.0,
+        )
+        transcription_response.raise_for_status()
+        payload = transcription_response.json()
+        text = str(payload.get("text", "")).strip()
+        return text or None
+    except httpx.HTTPStatusError as exc:
+        details = ""
+        try:
+            body = exc.response.text
+            details = f" status={exc.response.status_code} body={body[:300]}"
+        except Exception:
+            details = ""
+        logger.warning("openai_transcription_failed%s", details)
+        return None
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        logger.warning("openai_transcription_failed error=%s", exc)
+        return None
 
 
 def _is_valid_twilio_signature(request_url: str, params: dict[str, str], signature: str) -> bool:
@@ -114,13 +235,34 @@ def _is_valid_twilio_signature(request_url: str, params: dict[str, str], signatu
 def _twiml_message(message: str) -> Response:
     safe_message = escape(message)
     body = f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{safe_message}</Message></Response>'
-    return Response(content=body, media_type="application/xml")
+    return Response(content=body, media_type="text/xml", status_code=status.HTTP_200_OK)
+
+
+def _twiml_empty_response() -> Response:
+    return Response(content='<?xml version="1.0" encoding="UTF-8"?><Response></Response>', media_type="text/xml")
+
+
+def _send_whatsapp_reply(to_number: str, message: str) -> bool:
+    try:
+        sid = send_whatsapp_message(to_number=to_number, body=message)
+        logger.info("twilio_reply_sent sid=%s to=%s", sid, to_number)
+        return True
+    except Exception as exc:  # pragma: no cover - defensive runtime path
+        logger.warning("twilio_reply_send_failed to=%s error=%s", to_number, exc)
+        return False
 
 
 def _handle_text_command(owner_id: str, body: str) -> tuple[str, str]:
     command = body.strip()
+    lowered = command.lower()
 
-    if command.lower().startswith("create "):
+    if lowered in {"summary", "resume", "résumé", "todo", "to do", "actions"} or lowered.startswith("summary"):
+        owner = next((row for row in store.list_users() if row.id == owner_id), None)
+        owner_name = owner.full_name if owner else "Utilisateur"
+        summary = build_owner_summary_text(store, owner_name=owner_name, owner_id=owner_id)
+        return "summary", summary
+
+    if lowered.startswith("create "):
         payload = command[7:]
         parts = [chunk.strip() for chunk in payload.split("|")]
         if len(parts) != 4:
@@ -142,7 +284,7 @@ def _handle_text_command(owner_id: str, body: str) -> tuple[str, str]:
         )
         return "created", f"Dossier cree pour {company}."
 
-    if command.lower().startswith("update "):
+    if lowered.startswith("update "):
         payload = command[7:]
         parts = [chunk.strip() for chunk in payload.split("|")]
         if len(parts) != 2:
@@ -154,7 +296,7 @@ def _handle_text_command(owner_id: str, body: str) -> tuple[str, str]:
         store.update_deal(deal.id, DealUpdate(action=action))
         return "updated", f"Action mise a jour pour {company}."
 
-    if command.lower().startswith("close "):
+    if lowered.startswith("close "):
         payload = command[6:]
         parts = [chunk.strip() for chunk in payload.split("|")]
         if len(parts) != 2:
@@ -168,7 +310,7 @@ def _handle_text_command(owner_id: str, body: str) -> tuple[str, str]:
         store.update_deal(deal.id, DealUpdate(status=DealStatus(raw_status)))
         return "closed", f"Dossier {company} cloture en {raw_status}."
 
-    return "error", "Commande inconnue. Utilise create, update ou close."
+    return "error", "Commande inconnue. Utilise create, update, close ou summary."
 
 
 @router.post("/twilio")
@@ -184,6 +326,7 @@ async def receive_twilio_webhook(request: Request) -> Response:
     from_number = data.get("From", "")
     body = data.get("Body", "")
     media_url = data.get("MediaUrl0")
+    media_content_type = data.get("MediaContentType0")
 
     phone = from_number.replace("whatsapp:", "")
     user = store.find_user_by_whatsapp(phone)
@@ -191,26 +334,39 @@ async def receive_twilio_webhook(request: Request) -> Response:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown WhatsApp sender")
 
     if media_url:
-        return _twiml_message("Audio recu. Transcription IA en cours.")
+        transcript = _transcribe_audio_from_twilio_media(media_url=media_url, content_type=media_content_type)
+        if not transcript:
+            fallback_message = "Audio recu mais transcription indisponible. Envoie aussi le texte si possible."
+            if not _send_whatsapp_reply(phone, fallback_message):
+                return _twiml_message(fallback_message)
+            return _twiml_empty_response()
+        body = transcript
 
     if not body.strip():
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Empty message")
 
     nlu_command = _nlu_command_from_openai(body)
-    command_body = nlu_command or body
+    heuristic_command = None if nlu_command else _heuristic_command_from_natural_text(body)
+    command_body = nlu_command or heuristic_command or body
     logger.info(
         "twilio_command_received",
         extra={
             "owner_id": user.id,
-            "command_source": "openai_nlu" if nlu_command else "raw_text",
+            "command_source": "openai_nlu" if nlu_command else "heuristic_nlu" if heuristic_command else "raw_text",
             "command_kind": _command_kind(command_body),
             "parsed_command": command_body,
             "has_media": bool(media_url),
+            "transcribed_from_media": bool(media_url and body),
         },
     )
     result, message = _handle_text_command(owner_id=user.id, body=command_body)
-    logger.info("twilio_command_result", extra={"owner_id": user.id, "result": result})
-    return _twiml_message(message)
+    logger.info(
+        "twilio_command_result",
+        extra={"owner_id": user.id, "result": result, "message_preview": message[:120]},
+    )
+    if not _send_whatsapp_reply(phone, message):
+        return _twiml_message(message)
+    return _twiml_empty_response()
 
 
 @router.post("/twilio/debug/parse")

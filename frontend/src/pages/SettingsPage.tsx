@@ -4,6 +4,16 @@ import type { UserMapping } from '../types/deal'
 
 const e164Regex = /^\+[1-9]\d{6,14}$/
 
+function firstNameFromEmail(email: string, fallback: string): string {
+  const local = email.split('@')[0]?.trim() ?? ''
+  const token = local.split(/[._-]/)[0]?.trim()
+  const raw = token || fallback.split(/\s+/)[0]?.trim() || fallback
+  if (!raw) {
+    return fallback
+  }
+  return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()
+}
+
 function getSettingsErrorMessage(error: unknown): string {
   const fallback = 'Erreur de sauvegarde'
   if (!(error instanceof Error)) {
@@ -81,7 +91,7 @@ export function SettingsPage() {
                 const valid = e164Regex.test(row.whatsappNumber)
                 return (
                   <tr key={row.id}>
-                    <td className="px-4 py-3 font-medium text-slate-900">{row.fullName}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900">{firstNameFromEmail(row.email, row.fullName)}</td>
                     <td className="px-4 py-3 text-slate-600">{row.email}</td>
                     <td className="px-4 py-3">
                       <input

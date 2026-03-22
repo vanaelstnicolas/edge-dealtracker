@@ -277,3 +277,110 @@ Date: 2026-03-20
 - Added Settings UI action `Tester WhatsApp` per user row (`frontend/src/pages/SettingsPage.tsx`).
 - Added API client helper `sendWhatsappTest` (`frontend/src/lib/api.ts`).
 - Added backend tests in `backend/tests/test_settings_whatsapp_test.py`.
+
+## Update - 2026-03-21 (Twilio replies + CI stabilization + merge)
+
+### Completed
+
+- Updated Twilio inbound webhook (`POST /api/webhooks/twilio`) to return TwiML XML responses so WhatsApp users receive immediate reply messages.
+- Added webhook reply tests (`backend/tests/test_twilio_webhook_reply.py`) for text command and media acknowledgement paths.
+- Improved Twilio outbound error visibility by surfacing Twilio API code/message details in backend error responses.
+- Fixed CI reliability issues:
+  - set workflow push branch to `main` (instead of `master`)
+  - added `PYTHONPATH=.` for backend test jobs in GitHub Actions
+  - fixed frontend type errors by adding missing `ownerId` values in `frontend/src/lib/mock-data.ts`
+- Validated end-to-end WhatsApp flow in real environment:
+  - outbound test message from Settings received on device
+  - inbound WhatsApp command created a deal in Pipeline
+  - webhook now replies to WhatsApp sender with command result
+- Feature branch PR merged into `main` after all required checks passed.
+
+### Suggested next session
+
+1. Add owner dropdown by first name for assignment flows (derive display from `prenom.nom@edge-consulting.biz`).
+2. Reduce perceived frontend latency between pages via request caching/prefetching.
+3. Add a lightweight Playwright smoke test for login + pipeline navigation.
+
+## Update - 2026-03-22 (owner dropdown by first name)
+
+### Completed
+
+- Updated Pipeline owner assignment dropdown to display users by first name.
+- First name is derived from email local-part (`prenom.nom@...` -> `Prenom`) with fallback to `full_name`.
+- Added duplicate first-name handling by displaying `Prenom (Full Name)` when needed.
+
+### Next step
+
+1. Improve frontend page transition speed via data caching/prefetch.
+
+## Update - 2026-03-22 (frontend perceived performance)
+
+### Completed
+
+- Added lightweight client-side GET caching in `frontend/src/lib/api.ts` (30s TTL).
+- Added in-flight request deduplication so repeated navigation does not trigger duplicate concurrent calls.
+- Added cache invalidation hooks after mutations/imports:
+  - `updateUserWhatsapp`
+  - `updateDeal`
+  - `importDealsFromExcel`
+- Added app-level prefetch on authenticated session (`prefetchCoreData` in `frontend/src/App.tsx`) to warm deals/users data before page navigation.
+- Updated Pipeline owner display to show first-name labels consistently in table view (not only in edit dropdown).
+
+### Next step
+
+1. Add Playwright smoke test for login + navigation + pipeline render.
+
+## Update - 2026-03-22 (owner display normalization)
+
+### Completed
+
+- Normalized owner display labels to first-name format across UI contexts where `prenom.nom` appeared.
+- `fetchDeals` now maps owner display using first-name derivation from user email/local-part.
+- Settings user column now displays first-name format as well.
+
+## Update - 2026-03-22 (WhatsApp NLU + vocal + weekly summaries)
+
+### Completed
+
+- Enhanced WhatsApp NLU intent extraction to support unstructured natural messages (create/update/close/summary) with sensible defaults.
+- Added audio message handling path in Twilio webhook:
+  - fetches media from Twilio
+  - attempts OpenAI transcription
+  - routes transcription through the same command parser
+- Added owner action summary service and API routes:
+  - `GET /api/summary/me` (fetch current user to-do summary)
+  - `POST /api/summary/me/send` (send summary to user channels)
+- Added Dashboard controls to:
+  - display personal to-do summary in-app
+  - trigger summary send on WhatsApp + email
+- Added weekly scheduler job scaffolding for Monday 09:00 owner summaries (timezone-configurable).
+- Added backend notification utilities for Twilio WhatsApp and SMTP email.
+- Added tests for new summary routes and Twilio webhook reply scenarios.
+
+### Configuration notes
+
+- New env vars supported in backend config:
+  - `OPENAI_TRANSCRIBE_MODEL`
+  - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`
+  - `WEEKLY_SUMMARY_SCHEDULER_ENABLED`, `WEEKLY_SUMMARY_TIMEZONE`, `WEEKLY_SUMMARY_DAY_OF_WEEK`, `WEEKLY_SUMMARY_HOUR`
+
+## Update - 2026-03-22 (weekly summary ops controls)
+
+### Completed
+
+- Added admin API controls to operate weekly sends safely:
+  - `POST /api/summary/weekly/trigger` (manual immediate run)
+  - `GET /api/summary/weekly/status` (configured schedule visibility)
+- Added test coverage for admin authorization and manual trigger execution (`backend/tests/test_summary_routes.py`).
+
+## Backlog - next priorities
+
+1. Configure production SMTP sender account (technical mailbox)
+   - create dedicated sender (e.g. `noreply@edge-consulting.biz`)
+   - configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`
+   - validate Monday 09:00 scheduled summaries over email in staging/production
+
+2. Frontend UX/UI refinements
+   - replace technical channel statuses with polished badges/toasts in Dashboard summary card
+   - improve spacing/typography and success/error hierarchy for summary actions
+   - add consistent first-name display and humanized status labels across all pages
