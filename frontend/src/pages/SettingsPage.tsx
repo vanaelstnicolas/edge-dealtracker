@@ -72,8 +72,8 @@ export function SettingsPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="font-heading text-2xl font-semibold">Settings</h1>
-        <p className="text-sm text-slate-500">Mapping utilisateurs et numero WhatsApp (format E.164).</p>
+        <h1 className="font-heading text-2xl font-semibold">Parametres</h1>
+        <p className="text-sm text-slate-500">Annuaire utilisateurs et numeros WhatsApp (format E.164).</p>
       </header>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

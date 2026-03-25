@@ -159,3 +159,66 @@ def test_weekly_trigger_admin_ok(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert called["ok"] is True
+
+
+def test_weekly_status_admin_exposes_smtp_config(monkeypatch) -> None:
+    client = TestClient(app)
+    _configure_auth(
+        monkeypatch,
+        {
+            "id": "u-admin",
+            "email": "admin@example.com",
+            "user_metadata": {"full_name": "Admin"},
+            "app_metadata": {"role": "admin"},
+        },
+    )
+
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_scheduler_enabled", True)
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_timezone", "Europe/Brussels")
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_day_of_week", "mon")
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_hour", 9)
+    monkeypatch.setattr(summary_route.settings, "smtp_host", "smtp.office365.com")
+    monkeypatch.setattr(summary_route.settings, "smtp_from_email", "noreply@example.com")
+    monkeypatch.setattr(summary_route.settings, "smtp_username", "noreply@example.com")
+    monkeypatch.setattr(summary_route.settings, "smtp_password", "topsecret")
+    monkeypatch.setattr(summary_route.settings, "smtp_starttls_enabled", True)
+    monkeypatch.setattr(summary_route.settings, "smtp_ssl_enabled", False)
+
+    response = client.get("/api/summary/weekly/status", headers={"Authorization": "Bearer test-token"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["email_provider_requested"] == "auto"
+    assert payload["email_provider_effective"] == "smtp"
+    assert payload["smtp_configured"] is True
+    assert payload["smtp_auth_configured"] is True
+    assert payload["smtp_mode"] == "starttls"
+    assert payload["smtp_host"] == "smtp.office365.com"
+
+
+def test_weekly_status_prefers_graph_when_configured(monkeypatch) -> None:
+    client = TestClient(app)
+    _configure_auth(
+        monkeypatch,
+        {
+            "id": "u-admin",
+            "email": "admin@example.com",
+            "user_metadata": {"full_name": "Admin"},
+            "app_metadata": {"role": "admin"},
+        },
+    )
+
+    monkeypatch.setattr(summary_route.settings, "email_provider", "graph")
+    monkeypatch.setattr(summary_route.settings, "graph_tenant_id", "tenant-id")
+    monkeypatch.setattr(summary_route.settings, "graph_client_id", "client-id")
+    monkeypatch.setattr(summary_route.settings, "graph_client_secret", "client-secret")
+    monkeypatch.setattr(summary_route.settings, "graph_sender_user", "noreply@example.com")
+
+    response = client.get("/api/summary/weekly/status", headers={"Authorization": "Bearer test-token"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["email_provider_requested"] == "graph"
+    assert payload["email_provider_effective"] == "graph"
+    assert payload["graph_configured"] is True
+    assert payload["graph_sender_user"] == "noreply@example.com"

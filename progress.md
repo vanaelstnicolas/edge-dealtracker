@@ -373,6 +373,20 @@ Date: 2026-03-20
   - `GET /api/summary/weekly/status` (configured schedule visibility)
 - Added test coverage for admin authorization and manual trigger execution (`backend/tests/test_summary_routes.py`).
 
+## Update - 2026-03-22 (voice flow stabilization + PR merge)
+
+### Completed
+
+- Stabilized Twilio media download for voice transcription by following redirects from Twilio media URLs.
+- Added robust fallback flow for WhatsApp replies:
+  - outbound API send attempt
+  - fallback TwiML response when outbound send fails
+- Added heuristic natural-language parser fallback when strict command parsing is not applicable.
+- Validated end-to-end scenarios in real environment:
+  - `summary` command from WhatsApp returns owner-scoped to-do summary
+  - natural voice message successfully creates a deal (`Dossier cree pour Belfius`)
+- Merged PR `feat/whatsapp-summary-voice` into `main` with required CI checks passing.
+
 ## Backlog - next priorities
 
 1. Configure production SMTP sender account (technical mailbox)
@@ -384,3 +398,88 @@ Date: 2026-03-20
    - replace technical channel statuses with polished badges/toasts in Dashboard summary card
    - improve spacing/typography and success/error hierarchy for summary actions
    - add consistent first-name display and humanized status labels across all pages
+
+## Update - 2026-03-22 (dashboard/status UX polish)
+
+### Completed
+
+- Refined Dashboard summary action feedback with clearer visual hierarchy:
+  - success/error messages now use contextual alert blocks
+  - per-channel delivery outcomes (WhatsApp/Email) are now shown as humanized status badges
+- Summary item list in Dashboard is now rendered as readable cards with optional status badges (`Actif`, `Gagne`, `Perdu`) when available.
+- Normalized owner naming in Dashboard collaborator load section to first-name display.
+- Applied UI wording harmonization for user-facing labels:
+  - `Owner` -> `Responsable` in Pipeline table/search/edit form
+  - `Settings` page heading switched to `Parametres` with clearer subtitle copy
+
+### Remaining next priorities
+
+1. Configure production SMTP sender account (technical mailbox) and validate scheduled Monday summaries in staging/production.
+
+## Update - 2026-03-25 (SMTP configuration hardening)
+
+### Completed
+
+- Hardened backend SMTP settings in `backend/app/config.py`:
+  - added `SMTP_STARTTLS_ENABLED`
+  - added `SMTP_SSL_ENABLED`
+  - added `SMTP_TIMEOUT_SECONDS`
+- Improved email sender behavior in `backend/app/services/notifications.py`:
+  - explicit validation for incomplete auth config (`SMTP_USERNAME` without password)
+  - support for both STARTTLS and SSL transport modes
+  - configurable SMTP timeout
+- Extended admin ops visibility in `GET /api/summary/weekly/status`:
+  - `smtp_configured`
+  - `smtp_auth_configured`
+  - `smtp_mode`
+  - `smtp_host`
+  - `smtp_from_email`
+- Added SMTP and scheduler vars to `backend/.env.example`.
+- Added SMTP setup runbook: `docs/smtp-setup.md`.
+- Added backend test coverage for weekly SMTP status payload in `backend/tests/test_summary_routes.py`.
+
+### Remaining next priorities
+
+1. Apply real production SMTP credentials in `backend/.env.local` (or deployment secrets) and validate delivery via `POST /api/summary/weekly/trigger`.
+
+## Update - 2026-03-25 (Microsoft Graph email provider)
+
+### Completed
+
+- Added Microsoft Graph email provider (OAuth 2.0 / Entra ID client credentials) in `backend/app/services/notifications.py`.
+- Added provider selection and fallback strategy:
+  - `EMAIL_PROVIDER=auto|graph|smtp`
+  - Graph primary with optional SMTP fallback via `GRAPH_FALLBACK_TO_SMTP`
+- Added Graph configuration in `backend/app/config.py`:
+  - `graph_tenant_id`, `graph_client_id`, `graph_client_secret`, `graph_sender_user`
+  - `graph_timeout_seconds`, `graph_fallback_to_smtp`
+- Extended admin status endpoint `GET /api/summary/weekly/status` to expose effective email provider and Graph readiness.
+- Updated `backend/.env.example` with Graph provider variables.
+- Updated operational doc `docs/smtp-setup.md` to Graph-first setup (SMTP fallback temporary).
+- Added backend tests for provider status behavior in `backend/tests/test_summary_routes.py`.
+
+### Remaining next priorities
+
+1. Configure Entra app (`Mail.Send` application permission + admin consent) and set real Graph secrets in deployment environment.
+2. Validate manual trigger `POST /api/summary/weekly/trigger` sends email through Graph in staging.
+
+## Update - 2026-03-25 (frontend Playwright smoke)
+
+### Completed
+
+- Added Playwright smoke test setup in frontend:
+  - `frontend/playwright.config.ts`
+  - `frontend/tests/smoke.spec.ts`
+- Added `test:e2e` npm script and Playwright dependency in `frontend/package.json`.
+- Added CI job `Frontend Smoke E2E` in `.github/workflows/ci.yml`:
+  - installs Chromium for Playwright
+  - runs `npm run test:e2e`
+- Smoke coverage includes:
+  - anonymous login page rendering check
+  - authenticated navigation to Pipeline with mocked API responses
+  - Pipeline render assertion on a mocked deal row
+
+### Remaining next priorities
+
+1. Configure Entra app (`Mail.Send` application permission + admin consent) and set real Graph secrets in deployment environment.
+2. Validate manual trigger `POST /api/summary/weekly/trigger` sends email through Graph in staging.

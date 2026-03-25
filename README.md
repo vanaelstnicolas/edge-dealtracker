@@ -8,6 +8,7 @@ Current implementation status:
 - Microsoft Entra login integrated through Supabase Auth
 - Supabase SQL migration for initial schema (`users`, `deals`)
 - Twilio webhook with OpenAI NLU parsing + fallback command parser
+- Weekly summary email provider supports Microsoft Graph (Entra OAuth2) with optional SMTP fallback
 
 ## Frontend
 
@@ -48,3 +49,4 @@ Supabase role assignment policy for `user`/`admin` is documented in:
 
 - Authorization matrix: `docs/authz-matrix.md`
 - Release checklist: `docs/release-checklist.md`
+- SMTP setup: `docs/smtp-setup.md`

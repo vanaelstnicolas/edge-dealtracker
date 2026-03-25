@@ -188,7 +188,7 @@ export function PipelinePage() {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Rechercher entreprise, owner, description"
+          placeholder="Rechercher entreprise, responsable, description"
           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 md:max-w-md"
         />
         <div className="flex flex-wrap gap-2">
@@ -230,9 +230,9 @@ export function PipelinePage() {
                 <th className="px-4 py-3 font-heading font-medium">Description</th>
                 <th className="px-4 py-3 font-heading font-medium">Action</th>
                 <th className="px-4 py-3 font-heading font-medium">Deadline</th>
-                <th className="px-4 py-3 font-heading font-medium">Owner</th>
+                <th className="px-4 py-3 font-heading font-medium">Responsable</th>
                 <th className="px-4 py-3 font-heading font-medium">Statut</th>
-                <th className="px-4 py-3 font-heading font-medium">Edition</th>
+                <th className="px-4 py-3 font-heading font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -315,7 +315,7 @@ export function PipelinePage() {
                           </label>
 
                           <label className="text-sm text-slate-700 md:col-span-2">
-                            Owner
+                            Responsable
                             <select
                               value={editDraft.ownerId}
                               onChange={(event) => setEditDraft({ ...editDraft, ownerId: event.target.value })}

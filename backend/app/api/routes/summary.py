@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps.auth import get_current_user
 from app.repositories.in_memory import store
 from app.services.action_summary import build_owner_summary_text, get_owner_todo_items
-from app.services.notifications import send_email_message, send_whatsapp_message
+from app.services.notifications import email_provider_status, send_email_message, send_whatsapp_message
 from app.jobs.weekly_summary import send_weekly_summaries_job
 from app.config import settings
 
@@ -110,4 +110,5 @@ def weekly_summary_status(current_user: dict[str, Any] = Depends(get_current_use
         "timezone": settings.weekly_summary_timezone,
         "day_of_week": settings.weekly_summary_day_of_week,
         "hour": settings.weekly_summary_hour,
+        **email_provider_status(),
     }

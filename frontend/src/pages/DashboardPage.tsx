@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchDeals, fetchMyActionSummary, sendMyActionSummary, type MyActionSummary } from '../lib/api'
-import type { Deal } from '../types/deal'
+import { StatusBadge } from '../components/StatusBadge'
+import type { Deal, DealStatus } from '../types/deal'
 
 function formatPct(value: number) {
   return `${Math.round(value * 100)}%`
@@ -21,18 +22,37 @@ function ownerFirstName(owner: string): string {
   return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase()
 }
 
-function channelStatusLabel(channel: 'whatsapp' | 'email', status: string): string {
+function toDealStatus(value: string): DealStatus | null {
+  if (value === 'active' || value === 'won' || value === 'lost') {
+    return value
+  }
+  return null
+}
+
+function channelStatusMeta(channel: 'whatsapp' | 'email', status: string): { label: string; className: string } {
   const channelLabel = channel === 'whatsapp' ? 'WhatsApp' : 'Email'
   if (status === 'sent') {
-    return `${channelLabel} envoye`
+    return {
+      label: `${channelLabel} envoye`,
+      className: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    }
   }
   if (status === 'not_configured') {
-    return `${channelLabel} non configure`
+    return {
+      label: `${channelLabel} non configure`,
+      className: 'border-amber-200 bg-amber-50 text-amber-800',
+    }
   }
   if (status === 'skipped') {
-    return `${channelLabel} ignore`
+    return {
+      label: `${channelLabel} ignore`,
+      className: 'border-slate-200 bg-slate-100 text-slate-700',
+    }
   }
-  return `${channelLabel} statut: ${status}`
+  return {
+    label: `${channelLabel} echec`,
+    className: 'border-red-200 bg-red-50 text-red-700',
+  }
 }
 
 export function DashboardPage() {
@@ -42,6 +62,7 @@ export function DashboardPage() {
   const [summary, setSummary] = useState<MyActionSummary | null>(null)
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [summaryStatus, setSummaryStatus] = useState<string | null>(null)
+  const [summaryDelivery, setSummaryDelivery] = useState<{ whatsapp: string; email: string } | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [sendingSummary, setSendingSummary] = useState(false)
 
@@ -118,7 +139,7 @@ export function DashboardPage() {
             {lateDeals.length === 0 && <li>Aucun retard detecte.</li>}
             {lateDeals.map((deal) => (
               <li key={deal.id}>
-                {deal.company} - echeance {deal.deadline} - owner {ownerFirstName(deal.owner)}
+                {deal.company} - echeance {deal.deadline} - responsable {ownerFirstName(deal.owner)}
               </li>
             ))}
           </ul>
@@ -137,7 +158,7 @@ export function DashboardPage() {
             ).map(([owner, count]) => (
               <div key={owner}>
                 <div className="mb-1 flex items-center justify-between text-sm">
-                  <span>{owner}</span>
+                  <span>{ownerFirstName(owner)}</span>
                   <span>{count}</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100">
@@ -163,6 +184,7 @@ export function DashboardPage() {
                 setSummaryLoading(true)
                 setSummaryError(null)
                 setSummaryStatus(null)
+                setSummaryDelivery(null)
                 try {
                   const next = await fetchMyActionSummary()
                   setSummary(next)
@@ -185,10 +207,10 @@ export function DashboardPage() {
                 setSummaryStatus(null)
                 try {
                   const result = await sendMyActionSummary()
-                  setSummaryStatus(
-                    `Resume envoye - ${channelStatusLabel('whatsapp', result.whatsapp)} - ${channelStatusLabel('email', result.email)}`,
-                  )
+                  setSummaryStatus('Resume envoye. Verifiez le detail de livraison par canal ci-dessous.')
+                  setSummaryDelivery({ whatsapp: result.whatsapp, email: result.email })
                 } catch (err: unknown) {
+                  setSummaryDelivery(null)
                   setSummaryError(err instanceof Error ? err.message : 'Impossible d envoyer le resume')
                 } finally {
                   setSendingSummary(false)
@@ -201,8 +223,26 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {summaryStatus ? <p className="mt-3 text-sm text-emerald-700">{summaryStatus}</p> : null}
-        {summaryError ? <p className="mt-3 text-sm text-red-600">{summaryError}</p> : null}
+        {summaryStatus ? (
+          <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            {summaryStatus}
+          </p>
+        ) : null}
+        {summaryError ? (
+          <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{summaryError}</p>
+        ) : null}
+        {summaryDelivery ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(['whatsapp', 'email'] as const).map((channel) => {
+              const meta = channelStatusMeta(channel, summaryDelivery[channel])
+              return (
+                <span key={channel} className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${meta.className}`}>
+                  {meta.label}
+                </span>
+              )
+            })}
+          </div>
+        ) : null}
 
         {summary ? (
           <div className="mt-4 space-y-2 text-sm text-slate-700">
@@ -210,12 +250,20 @@ export function DashboardPage() {
             {summary.items.length === 0 ? (
               <p>Aucune action active.</p>
             ) : (
-              <ul className="list-disc space-y-1 pl-5">
-                {summary.items.map((item, index) => (
-                  <li key={`${item.company}-${index}`}>
-                    {item.company} - {item.action} (deadline {item.deadline})
-                  </li>
-                ))}
+              <ul className="space-y-2">
+                {summary.items.map((item, index) => {
+                  const badgeStatus = toDealStatus(item.status)
+                  return (
+                    <li key={`${item.company}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-slate-900">{item.company}</span>
+                        {badgeStatus ? <StatusBadge status={badgeStatus} /> : null}
+                      </div>
+                      <p className="mt-1 text-slate-700">{item.action}</p>
+                      <p className="mt-1 text-xs text-slate-500">Deadline: {item.deadline}</p>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </div>
