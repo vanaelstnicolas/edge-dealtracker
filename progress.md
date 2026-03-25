@@ -438,10 +438,6 @@ Date: 2026-03-20
 - Added SMTP setup runbook: `docs/smtp-setup.md`.
 - Added backend test coverage for weekly SMTP status payload in `backend/tests/test_summary_routes.py`.
 
-### Remaining next priorities
-
-1. Apply real production SMTP credentials in `backend/.env.local` (or deployment secrets) and validate delivery via `POST /api/summary/weekly/trigger`.
-
 ## Update - 2026-03-25 (Microsoft Graph email provider)
 
 ### Completed
@@ -457,11 +453,19 @@ Date: 2026-03-20
 - Updated `backend/.env.example` with Graph provider variables.
 - Updated operational doc `docs/smtp-setup.md` to Graph-first setup (SMTP fallback temporary).
 - Added backend tests for provider status behavior in `backend/tests/test_summary_routes.py`.
+- Validated live Graph send path:
+  - token acquisition succeeds
+  - direct Graph `sendMail` returns `202`
+  - app-level `send_email_message` succeeds
+  - inbox reception confirmed on `nicolas.vanaelst@edge-consulting.biz`
+- Added prod-safe smoke helpers:
+  - `smoke-summary-email.ps1`
+  - `smoke-summary-email.sh`
 
 ### Remaining next priorities
 
-1. Configure Entra app (`Mail.Send` application permission + admin consent) and set real Graph secrets in deployment environment.
-2. Validate manual trigger `POST /api/summary/weekly/trigger` sends email through Graph in staging.
+1. Keep `EMAIL_PROVIDER=graph` in staging/prod and set `GRAPH_FALLBACK_TO_SMTP=false` once Graph is fully trusted.
+2. Add monitoring/alerts on summary send failures (Graph/API exceptions) for operational visibility.
 
 ## Update - 2026-03-25 (frontend Playwright smoke)
 
@@ -481,5 +485,5 @@ Date: 2026-03-20
 
 ### Remaining next priorities
 
-1. Configure Entra app (`Mail.Send` application permission + admin consent) and set real Graph secrets in deployment environment.
-2. Validate manual trigger `POST /api/summary/weekly/trigger` sends email through Graph in staging.
+1. Keep `EMAIL_PROVIDER=graph` in staging/prod and set `GRAPH_FALLBACK_TO_SMTP=false` once Graph is fully trusted.
+2. Add monitoring/alerts on summary send failures (Graph/API exceptions) for operational visibility.
