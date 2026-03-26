@@ -23,7 +23,7 @@ async def lifespan(_app: FastAPI):
                 trigger="cron",
                 day_of_week=settings.weekly_summary_day_of_week,
                 hour=settings.weekly_summary_hour,
-                minute=0,
+                minute=settings.weekly_summary_minute,
                 id="weekly-owner-summary",
                 replace_existing=True,
             )

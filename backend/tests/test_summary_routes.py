@@ -124,6 +124,64 @@ def test_send_my_summary_calls_channels(monkeypatch) -> None:
     assert payload["email"] == "sent"
 
 
+def test_send_my_summary_reports_email_failure(monkeypatch) -> None:
+    client = TestClient(app)
+    _configure_auth(
+        monkeypatch,
+        {
+            "id": "u-1",
+            "email": "nicolas.vanaelst@edge-consulting.biz",
+            "user_metadata": {"full_name": "Nicolas"},
+        },
+    )
+
+    monkeypatch.setattr(
+        summary_route.store,
+        "list_users",
+        lambda: [
+            UserMapping(
+                id="u-1",
+                full_name="Nicolas",
+                email="nicolas.vanaelst@edge-consulting.biz",
+                whatsapp_number="+32479591226",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        summary_route.store,
+        "list_deals",
+        lambda status=None, owner_id=None: [
+            DealRead(
+                id="dl-1",
+                company="Belfius",
+                description="desc",
+                action="Relancer",
+                deadline=date(2026, 4, 10),
+                owner_id=owner_id or "u-1",
+                status=DealStatus.active,
+                created_at=datetime.now(timezone.utc),
+            )
+        ],
+    )
+
+    def _email_failure(**kwargs):
+        raise RuntimeError("graph down")
+
+    alerts: list[dict] = []
+    monkeypatch.setattr(summary_route, "send_whatsapp_message", lambda **kwargs: "SM123")
+    monkeypatch.setattr(summary_route, "send_email_message", _email_failure)
+    monkeypatch.setattr(summary_route, "report_summary_delivery_failure", lambda **kwargs: alerts.append(kwargs))
+
+    response = client.post("/api/summary/me/send", headers={"Authorization": "Bearer test-token"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["email"] == "not_configured"
+    assert len(alerts) == 1
+    assert alerts[0]["operation"] == "manual_send"
+    assert alerts[0]["channel"] == "email"
+
+
 def test_weekly_trigger_requires_admin(monkeypatch) -> None:
     client = TestClient(app)
     _configure_auth(
@@ -159,3 +217,78 @@ def test_weekly_trigger_admin_ok(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert called["ok"] is True
+
+
+def test_weekly_status_admin_exposes_smtp_config(monkeypatch) -> None:
+    client = TestClient(app)
+    _configure_auth(
+        monkeypatch,
+        {
+            "id": "u-admin",
+            "email": "admin@example.com",
+            "user_metadata": {"full_name": "Admin"},
+            "app_metadata": {"role": "admin"},
+        },
+    )
+
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_scheduler_enabled", True)
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_timezone", "Europe/Brussels")
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_day_of_week", "mon")
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_hour", 8)
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_minute", 0)
+    monkeypatch.setattr(summary_route.settings, "email_provider", "auto")
+    monkeypatch.setattr(summary_route.settings, "graph_tenant_id", "")
+    monkeypatch.setattr(summary_route.settings, "graph_client_id", "")
+    monkeypatch.setattr(summary_route.settings, "graph_client_secret", "")
+    monkeypatch.setattr(summary_route.settings, "graph_sender_user", "")
+    monkeypatch.setattr(summary_route.settings, "smtp_host", "smtp.office365.com")
+    monkeypatch.setattr(summary_route.settings, "smtp_from_email", "noreply@example.com")
+    monkeypatch.setattr(summary_route.settings, "smtp_username", "noreply@example.com")
+    monkeypatch.setattr(summary_route.settings, "smtp_password", "topsecret")
+    monkeypatch.setattr(summary_route.settings, "smtp_starttls_enabled", True)
+    monkeypatch.setattr(summary_route.settings, "smtp_ssl_enabled", False)
+    monkeypatch.setattr(summary_route.settings, "summary_alert_webhook_url", "https://ops.example.com/webhook")
+    monkeypatch.setattr(summary_route.settings, "summary_alert_timeout_seconds", 7)
+
+    response = client.get("/api/summary/weekly/status", headers={"Authorization": "Bearer test-token"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["email_provider_requested"] == "auto"
+    assert payload["email_provider_effective"] == "smtp"
+    assert payload["smtp_configured"] is True
+    assert payload["smtp_auth_configured"] is True
+    assert payload["smtp_mode"] == "starttls"
+    assert payload["smtp_host"] == "smtp.office365.com"
+    assert payload["hour"] == 8
+    assert payload["minute"] == 0
+    assert payload["summary_alert_webhook_configured"] is True
+    assert payload["summary_alert_timeout_seconds"] == 7
+
+
+def test_weekly_status_prefers_graph_when_configured(monkeypatch) -> None:
+    client = TestClient(app)
+    _configure_auth(
+        monkeypatch,
+        {
+            "id": "u-admin",
+            "email": "admin@example.com",
+            "user_metadata": {"full_name": "Admin"},
+            "app_metadata": {"role": "admin"},
+        },
+    )
+
+    monkeypatch.setattr(summary_route.settings, "email_provider", "graph")
+    monkeypatch.setattr(summary_route.settings, "graph_tenant_id", "tenant-id")
+    monkeypatch.setattr(summary_route.settings, "graph_client_id", "client-id")
+    monkeypatch.setattr(summary_route.settings, "graph_client_secret", "client-secret")
+    monkeypatch.setattr(summary_route.settings, "graph_sender_user", "noreply@example.com")
+
+    response = client.get("/api/summary/weekly/status", headers={"Authorization": "Bearer test-token"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["email_provider_requested"] == "graph"
+    assert payload["email_provider_effective"] == "graph"
+    assert payload["graph_configured"] is True
+    assert payload["graph_sender_user"] == "noreply@example.com"

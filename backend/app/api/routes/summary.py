@@ -7,7 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps.auth import get_current_user
 from app.repositories.in_memory import store
 from app.services.action_summary import build_owner_summary_text, get_owner_todo_items
-from app.services.notifications import send_email_message, send_whatsapp_message
+from app.services.notifications import (
+    email_provider_status,
+    report_summary_delivery_failure,
+    send_email_message,
+    send_whatsapp_message,
+)
+from app.services.rate_limit import enforce_rate_limit
 from app.jobs.weekly_summary import send_weekly_summaries_job
 from app.config import settings
 
@@ -59,6 +65,12 @@ def get_my_summary(current_user: dict[str, Any] = Depends(get_current_user)) -> 
 @router.post("/me/send")
 def send_my_summary(current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     owner_id, owner_name, owner_email = _owner_identity(current_user)
+    enforce_rate_limit(
+        bucket="summary_send",
+        key=owner_id,
+        limit=settings.summary_send_rate_limit_per_user,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
     summary_text = build_owner_summary_text(store, owner_name=owner_name, owner_id=owner_id)
 
     whatsapp_status = "skipped"
@@ -70,6 +82,14 @@ def send_my_summary(current_user: dict[str, Any] = Depends(get_current_user)) ->
             send_whatsapp_message(to_number=target.whatsapp_number, body=summary_text)
             whatsapp_status = "sent"
         except Exception as exc:  # pragma: no cover - defensive
+            report_summary_delivery_failure(
+                operation="manual_send",
+                channel="whatsapp",
+                owner_id=owner_id,
+                owner_name=owner_name,
+                owner_email=owner_email,
+                error=exc,
+            )
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"WhatsApp send failed: {exc}") from exc
 
     if owner_email:
@@ -81,6 +101,14 @@ def send_my_summary(current_user: dict[str, Any] = Depends(get_current_user)) ->
             )
             email_status = "sent"
         except Exception:
+            report_summary_delivery_failure(
+                operation="manual_send",
+                channel="email",
+                owner_id=owner_id,
+                owner_name=owner_name,
+                owner_email=owner_email,
+                error="email_send_failed_or_not_configured",
+            )
             email_status = "not_configured"
 
     return {
@@ -110,4 +138,8 @@ def weekly_summary_status(current_user: dict[str, Any] = Depends(get_current_use
         "timezone": settings.weekly_summary_timezone,
         "day_of_week": settings.weekly_summary_day_of_week,
         "hour": settings.weekly_summary_hour,
+        "minute": settings.weekly_summary_minute,
+        "summary_alert_webhook_configured": bool(settings.summary_alert_webhook_url.strip()),
+        "summary_alert_timeout_seconds": settings.summary_alert_timeout_seconds,
+        **email_provider_status(),
     }

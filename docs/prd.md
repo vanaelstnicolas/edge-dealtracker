@@ -25,7 +25,7 @@ Permettre à l'équipe commerciale de gérer son pipeline depuis n'importe où v
 * **Direction :** Cherche à suivre les KPIs de conversion. *Canal : App Web (Dashboard).*
 
 **2.2 Exigences Fonctionnelles (MVP)**
-* **FR1 - Authentification :** Connexion via Email/Mot de passe.
+* **FR1 - Authentification :** Connexion exclusivement via Microsoft Entra ID (via Supabase Auth).
 * **FR2 - Gestion (CRUD) :** Créer, modifier, clôturer et archiver un dossier via l'app web.
 * **FR3 - Vues et Filtres :** Filtrage et tri des dossiers actifs/archivés.
 * **FR4 - Dashboard :** Suivi des KPIs (actifs, gagnés, perdus, conversion).
@@ -36,13 +36,13 @@ Permettre à l'équipe commerciale de gérer son pipeline depuis n'importe où v
 * **NFR1 & NFR2 - Sécurité :** Tokens JWT, validation signature Twilio, API keys sécurisées, HTTPS.
 * **NFR3 - Performance :** Rate Limiting, traitement asynchrone pour l'IA.
 * **NFR4 - RGPD :** Hébergement en Europe.
-* **NFR5 - IA Vocale :** Utilisation de Mistral Voxtral Mini Transcribe V2 pour la rapidité et la souveraineté.
+* **NFR5 - IA Vocale :** Utilisation de OpenAI Whisper pour la transcription vocale WhatsApp.
 
 ## 3. Product Backlog (Epics & User Stories)
 
 **Epic 1 : Fondations & Authentification (Supabase)**
 * **US 1.1 :** Configurer Supabase et le schéma de DB (`users`, `deals`).
-* **US 1.2 :** Authentification Email/Mot de passe via Supabase Auth.
+* **US 1.2 :** Authentification Microsoft Entra ID via Supabase Auth (pas de login local email/mot de passe).
 * **US 1.3 :** Mapping des numéros WhatsApp aux utilisateurs.
 
 **Epic 2 : Application Web**
@@ -52,7 +52,7 @@ Permettre à l'équipe commerciale de gérer son pipeline depuis n'importe où v
 
 **Epic 3 : Assistant WhatsApp Omnicanal**
 * **US 3.1 :** Réception Webhook Twilio sécurisé.
-* **US 3.2 :** Transcription vocale via Mistral Voxtral Mini Transcribe V2.
+* **US 3.2 :** Transcription vocale via OpenAI Whisper.
 * **US 3.3 :** Extraction NLU via Claude API (Sonnet) vers format JSON.
 * **US 3.4 :** Exécution en DB et envoi du message de confirmation WhatsApp.
 

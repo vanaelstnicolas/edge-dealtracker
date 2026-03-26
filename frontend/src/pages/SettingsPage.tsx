@@ -66,17 +66,18 @@ export function SettingsPage() {
   }
 
   if (error) {
-    return <p className="text-sm text-red-600">Erreur API: {error}</p>
+    return <p className="text-sm text-red-600">Une erreur est survenue: {error}</p>
   }
 
   return (
-    <div className="space-y-5">
-      <header>
-        <h1 className="font-heading text-2xl font-semibold">Settings</h1>
-        <p className="text-sm text-slate-500">Mapping utilisateurs et numero WhatsApp (format E.164).</p>
+    <div className="space-y-5 edge-enter">
+      <header className="edge-panel p-5 md:p-6">
+        <p className="edge-eyebrow">Operations settings</p>
+        <h1 className="edge-title mt-2 font-heading text-3xl font-semibold">Paramètres</h1>
+        <p className="mt-2 text-sm text-slate-600">Annuaire utilisateurs et numeros WhatsApp au format international (ex: +32470123456).</p>
       </header>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <section className="edge-panel overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-left text-[15px]">
             <thead className="bg-slate-50 text-sm text-slate-600">
@@ -130,8 +131,8 @@ export function SettingsPage() {
                           setTestMessage(null)
                           setSendingTestFor(row.id)
                           try {
-                            const result = await sendWhatsappTest(row.id)
-                            setTestMessage(`Message de test envoye (sid: ${result.messageSid || 'n/a'})`)
+                            await sendWhatsappTest(row.id)
+                            setTestMessage('Message de test WhatsApp envoye avec succes.')
                           } catch (err) {
                             setError(getSettingsErrorMessage(err))
                           } finally {

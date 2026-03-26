@@ -373,6 +373,20 @@ Date: 2026-03-20
   - `GET /api/summary/weekly/status` (configured schedule visibility)
 - Added test coverage for admin authorization and manual trigger execution (`backend/tests/test_summary_routes.py`).
 
+## Update - 2026-03-22 (voice flow stabilization + PR merge)
+
+### Completed
+
+- Stabilized Twilio media download for voice transcription by following redirects from Twilio media URLs.
+- Added robust fallback flow for WhatsApp replies:
+  - outbound API send attempt
+  - fallback TwiML response when outbound send fails
+- Added heuristic natural-language parser fallback when strict command parsing is not applicable.
+- Validated end-to-end scenarios in real environment:
+  - `summary` command from WhatsApp returns owner-scoped to-do summary
+  - natural voice message successfully creates a deal (`Dossier cree pour Belfius`)
+- Merged PR `feat/whatsapp-summary-voice` into `main` with required CI checks passing.
+
 ## Backlog - next priorities
 
 1. Configure production SMTP sender account (technical mailbox)
@@ -384,3 +398,244 @@ Date: 2026-03-20
    - replace technical channel statuses with polished badges/toasts in Dashboard summary card
    - improve spacing/typography and success/error hierarchy for summary actions
    - add consistent first-name display and humanized status labels across all pages
+
+## Update - 2026-03-22 (dashboard/status UX polish)
+
+### Completed
+
+- Refined Dashboard summary action feedback with clearer visual hierarchy:
+  - success/error messages now use contextual alert blocks
+  - per-channel delivery outcomes (WhatsApp/Email) are now shown as humanized status badges
+- Summary item list in Dashboard is now rendered as readable cards with optional status badges (`Actif`, `Gagne`, `Perdu`) when available.
+- Normalized owner naming in Dashboard collaborator load section to first-name display.
+- Applied UI wording harmonization for user-facing labels:
+  - `Owner` -> `Responsable` in Pipeline table/search/edit form
+  - `Settings` page heading switched to `Parametres` with clearer subtitle copy
+
+### Remaining next priorities
+
+1. Configure production SMTP sender account (technical mailbox) and validate scheduled Monday summaries in staging/production.
+
+## Update - 2026-03-25 (SMTP configuration hardening)
+
+### Completed
+
+- Hardened backend SMTP settings in `backend/app/config.py`:
+  - added `SMTP_STARTTLS_ENABLED`
+  - added `SMTP_SSL_ENABLED`
+  - added `SMTP_TIMEOUT_SECONDS`
+- Improved email sender behavior in `backend/app/services/notifications.py`:
+  - explicit validation for incomplete auth config (`SMTP_USERNAME` without password)
+  - support for both STARTTLS and SSL transport modes
+  - configurable SMTP timeout
+- Extended admin ops visibility in `GET /api/summary/weekly/status`:
+  - `smtp_configured`
+  - `smtp_auth_configured`
+  - `smtp_mode`
+  - `smtp_host`
+  - `smtp_from_email`
+- Added SMTP and scheduler vars to `backend/.env.example`.
+- Added SMTP setup runbook: `docs/smtp-setup.md`.
+- Added backend test coverage for weekly SMTP status payload in `backend/tests/test_summary_routes.py`.
+
+## Update - 2026-03-25 (Microsoft Graph email provider)
+
+### Completed
+
+- Added Microsoft Graph email provider (OAuth 2.0 / Entra ID client credentials) in `backend/app/services/notifications.py`.
+- Added provider selection and fallback strategy:
+  - `EMAIL_PROVIDER=auto|graph|smtp`
+  - Graph primary with optional SMTP fallback via `GRAPH_FALLBACK_TO_SMTP`
+- Added Graph configuration in `backend/app/config.py`:
+  - `graph_tenant_id`, `graph_client_id`, `graph_client_secret`, `graph_sender_user`
+  - `graph_timeout_seconds`, `graph_fallback_to_smtp`
+- Extended admin status endpoint `GET /api/summary/weekly/status` to expose effective email provider and Graph readiness.
+- Updated `backend/.env.example` with Graph provider variables.
+- Updated operational doc `docs/smtp-setup.md` to Graph-first setup (SMTP fallback temporary).
+- Added backend tests for provider status behavior in `backend/tests/test_summary_routes.py`.
+- Validated live Graph send path:
+  - token acquisition succeeds
+  - direct Graph `sendMail` returns `202`
+  - app-level `send_email_message` succeeds
+  - inbox reception confirmed on `nicolas.vanaelst@edge-consulting.biz`
+- Added prod-safe smoke helpers:
+  - `smoke-summary-email.ps1`
+  - `smoke-summary-email.sh`
+
+## Update - 2026-03-25 (frontend Playwright smoke)
+
+### Completed
+
+- Added Playwright smoke test setup in frontend:
+  - `frontend/playwright.config.ts`
+  - `frontend/tests/smoke.spec.ts`
+- Added `test:e2e` npm script and Playwright dependency in `frontend/package.json`.
+- Added CI job `Frontend Smoke E2E` in `.github/workflows/ci.yml`:
+  - installs Chromium for Playwright
+  - runs `npm run test:e2e`
+- Smoke coverage includes:
+  - anonymous login page rendering check
+  - authenticated navigation to Pipeline with mocked API responses
+  - Pipeline render assertion on a mocked deal row
+
+### Remaining next priorities
+
+1. Keep `EMAIL_PROVIDER=graph` in staging/prod and set `GRAPH_FALLBACK_TO_SMTP=false` once Graph is fully trusted.
+2. Add monitoring/alerts on summary send failures (Graph/API exceptions) for operational visibility.
+
+## Update - 2026-03-25 (summary failure monitoring)
+
+### Completed
+
+- Added summary delivery failure monitoring hooks for both manual and scheduled sends:
+  - `POST /api/summary/me/send` now reports failed channel sends to the monitoring helper.
+  - Weekly scheduler job now reports WhatsApp/email failures instead of silently swallowing exceptions.
+- Added monitoring helper in notifications service (`report_summary_delivery_failure`) with:
+  - structured warning logs (`summary_delivery_failed`)
+  - optional webhook forwarding for alerts when configured
+- Added new backend config/env support:
+  - `SUMMARY_ALERT_WEBHOOK_URL`
+  - `SUMMARY_ALERT_TIMEOUT_SECONDS`
+- Updated operations runbook `docs/smtp-setup.md` with failure alert configuration and payload contract.
+- Added backend tests:
+  - manual summary send reports email failure (`backend/tests/test_summary_routes.py`)
+  - weekly job reports per-channel failures (`backend/tests/test_weekly_summary_job.py`)
+
+### Remaining next priorities
+
+1. Configure `SUMMARY_ALERT_WEBHOOK_URL` to your monitoring stack endpoint (Teams/Slack webhook relay, Ops endpoint, etc.).
+2. Keep `EMAIL_PROVIDER=graph` in staging/prod and set `GRAPH_FALLBACK_TO_SMTP=false` once Graph is fully trusted.
+
+## Update - 2026-03-26 (NFR5 cleanup: Whisper-only config)
+
+### Completed
+
+- Removed obsolete Mistral/Voxtral settings from backend config model:
+  - removed `mistral_api_key`
+  - removed `mistral_transcribe_model`
+- Removed obsolete Mistral env vars from `backend/.env.example`.
+- Hardened settings loading for local/staging env drift by allowing unknown env keys (`extra="ignore"`) so stale local keys do not block startup/tests.
+
+### Validation
+
+- Backend tests: `python -m pytest tests/test_twilio_webhook_reply.py tests/test_summary_routes.py` (11 passed)
+
+### Remaining next priorities
+
+1. Remove stale `MISTRAL_*` lines from local runtime env files where present (`backend/.env.local` etc.) to keep environments clean.
+2. Configure `SUMMARY_ALERT_WEBHOOK_URL` to your monitoring stack endpoint.
+3. Keep `EMAIL_PROVIDER=graph` in staging/prod and set `GRAPH_FALLBACK_TO_SMTP=false` once Graph is fully trusted.
+
+## Update - 2026-03-25 (PRD alignment decisions)
+
+### Completed
+
+- Updated PRD authentication requirement to Entra ID-only access (via Supabase Auth), no local email/password login.
+- Updated PRD voice transcription requirement to OpenAI Whisper (replacing Voxtral wording).
+- Updated corresponding user stories in PRD:
+  - `US 1.2` -> Entra ID via Supabase Auth
+  - `US 3.2` -> OpenAI Whisper
+
+### Next delivery focus (per PRD)
+
+1. FR/US 4.1: harden and validate Monday 08:00 scheduled summaries in staging/prod.
+2. FR2/FR3: close remaining CRUD/filter gaps for archived pipeline handling.
+3. NFR3: add API rate limiting and async hardening on AI/Twilio paths.
+
+## Update - 2026-03-25 (FR3 filter scope + NFR3 rate limiting)
+
+### Completed
+
+- Added backend rate limiting guardrails (in-memory, per bucket/key) via `backend/app/services/rate_limit.py`.
+- Applied API rate limiting on sensitive paths:
+  - `POST /api/webhooks/twilio` (per phone)
+  - `POST /api/summary/me/send` (per user)
+  - `POST /api/deals/import/excel` (per user)
+- Added configurable rate limit vars in backend settings and env example:
+  - `RATE_LIMIT_WINDOW_SECONDS`
+  - `TWILIO_RATE_LIMIT_PER_PHONE`
+  - `SUMMARY_SEND_RATE_LIMIT_PER_USER`
+  - `DEALS_IMPORT_RATE_LIMIT_PER_USER`
+- Added archived scope filtering for deals route:
+  - `GET /api/deals?scope=all|active|archived`
+  - `archived` maps to closed pipeline statuses (`won`, `lost`)
+- Updated Pipeline UI to support active/archive segmentation and deadline sort direction control.
+- Added backend tests:
+  - rate limiting behavior across Twilio, summary send, and Excel import (`backend/tests/test_rate_limiting.py`)
+  - deals scope filtering (`backend/tests/test_deals_scope_filters.py`)
+
+### Validation
+
+- Backend: `python -m pytest tests/test_summary_routes.py tests/test_twilio_webhook_reply.py tests/test_deals_excel_import.py tests/test_deals_scope_filters.py tests/test_rate_limiting.py` (18 passed)
+- Frontend: `npm run build` (success)
+
+### Remaining next priorities
+
+1. FR2: complete web-level CRUD loop explicitly (including create/archive UX semantics) beyond current edit/close/import flows.
+2. FR/US 4.1: validate Monday 08:00 scheduler run in staging/prod with final provider settings.
+3. NFR3: evaluate persistent/distributed limiter strategy if multi-instance deployment is enabled.
+
+## Update - 2026-03-25 (FR2 explicit web CRUD actions)
+
+### Completed
+
+- Added explicit create flow in Pipeline UI with a dedicated `Nouveau dossier` form (company, description, action, deadline).
+- Added quick status actions in Pipeline rows:
+  - active deal -> `Gagne` / `Perdu` (archive by closure status)
+  - archived deal -> `Reouvrir` (status back to `active`)
+- Extended frontend API client with `createDeal(...)` and improved cache invalidation after create/update (`/deals`, `/dashboard/kpis`, `/summary/me`).
+- Kept backend owner-scope guarantees on create (owner id derived from authenticated Supabase session).
+
+### Validation
+
+- Frontend build: `npm run build` (success)
+
+### Remaining next priorities
+
+1. FR/US 4.1: validate Monday 08:00 scheduler run in staging/prod with final provider settings.
+2. NFR3: evaluate persistent/distributed limiter strategy if multi-instance deployment is enabled.
+
+## Update - 2026-03-25 (FR6 scheduler target hardening)
+
+### Completed
+
+- Aligned default scheduler configuration with PRD FR6 target (Monday 08:00):
+  - `weekly_summary_hour` default changed to `8`
+  - added `weekly_summary_minute` (default `0`)
+- Updated scheduler wiring to use configurable minute in backend lifespan job registration.
+- Extended admin status endpoint `GET /api/summary/weekly/status` to expose `minute`.
+- Updated env template with FR6 defaults:
+  - `WEEKLY_SUMMARY_HOUR=8`
+  - `WEEKLY_SUMMARY_MINUTE=0`
+- Strengthened smoke validation scripts to assert expected scheduler target by default:
+  - PowerShell: `smoke-summary-email.ps1` (`ExpectedDay`, `ExpectedHour`, `ExpectedMinute`)
+  - Bash: `smoke-summary-email.sh` (`EXPECTED_DAY`, `EXPECTED_HOUR`, `EXPECTED_MINUTE`)
+- Updated runbook `docs/smtp-setup.md` to include minute and explicit FR6 scheduler check.
+
+### Validation
+
+- Backend tests: `python -m pytest tests/test_summary_routes.py tests/test_rate_limiting.py tests/test_weekly_summary_job.py` (11 passed)
+
+### Remaining next priorities
+
+1. Execute staging/prod smoke run with admin token and confirm scheduler status endpoint returns `mon / 8 / 0` and effective provider `graph`.
+2. Verify one real scheduled run in staging/prod and confirm both channels (email + WhatsApp) are delivered.
+3. NFR3: evaluate persistent/distributed limiter strategy if multi-instance deployment is enabled.
+
+## Update - 2026-03-25 (alert visibility in status + smoke)
+
+### Completed
+
+- Extended admin status endpoint `GET /api/summary/weekly/status` with alert visibility:
+  - `summary_alert_webhook_configured`
+  - `summary_alert_timeout_seconds`
+- Extended summary route status tests to cover alert visibility fields (`backend/tests/test_summary_routes.py`).
+- Updated smoke helpers to print alerting readiness details:
+  - `smoke-summary-email.ps1`
+  - `smoke-summary-email.sh`
+- Updated runbook validation checklist in `docs/smtp-setup.md` to include alert readiness confirmation.
+
+### Remaining next priorities
+
+1. Configure `SUMMARY_ALERT_WEBHOOK_URL` to your monitoring stack endpoint (Teams/Slack webhook relay, Ops endpoint, etc.).
+2. Keep `EMAIL_PROVIDER=graph` in staging/prod and set `GRAPH_FALLBACK_TO_SMTP=false` once Graph is fully trusted.

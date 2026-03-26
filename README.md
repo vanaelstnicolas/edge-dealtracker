@@ -8,6 +8,7 @@ Current implementation status:
 - Microsoft Entra login integrated through Supabase Auth
 - Supabase SQL migration for initial schema (`users`, `deals`)
 - Twilio webhook with OpenAI NLU parsing + fallback command parser
+- Weekly summary email provider supports Microsoft Graph (Entra OAuth2) with optional SMTP fallback
 
 ## Frontend
 
@@ -48,3 +49,11 @@ Supabase role assignment policy for `user`/`admin` is documented in:
 
 - Authorization matrix: `docs/authz-matrix.md`
 - Release checklist: `docs/release-checklist.md`
+- SMTP setup: `docs/smtp-setup.md`
+
+## Email smoke scripts
+
+- PowerShell (status-only): `./smoke-summary-email.ps1 -Token <bearer-token>`
+- PowerShell (send own summary): `./smoke-summary-email.ps1 -Token <bearer-token> -SendMySummary`
+- Bash (status-only): `DEALTRACKER_BEARER_TOKEN=<token> ./smoke-summary-email.sh`
+- Bash (send own summary): `DEALTRACKER_BEARER_TOKEN=<token> SEND_MY_SUMMARY=true ./smoke-summary-email.sh`

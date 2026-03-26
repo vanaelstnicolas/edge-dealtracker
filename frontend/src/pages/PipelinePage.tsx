@@ -1,13 +1,18 @@
 import { Fragment, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { StatusBadge } from '../components/StatusBadge'
-import { fetchDeals, fetchUsers, importDealsFromExcel, updateDeal } from '../lib/api'
+import { createDeal, deleteDeal, fetchDeals, fetchUsers, importDealsFromExcel, updateDeal, type DealScope } from '../lib/api'
 import type { Deal, DealStatus, UserMapping } from '../types/deal'
 
 const statusOptions: Array<{ label: string; value: DealStatus | 'all' }> = [
   { label: 'Tous', value: 'all' },
-  { label: 'Actifs', value: 'active' },
   { label: 'Gagnes', value: 'won' },
   { label: 'Perdus', value: 'lost' },
+]
+
+const scopeOptions: Array<{ label: string; value: DealScope }> = [
+  { label: 'Tous', value: 'all' },
+  { label: 'Actifs', value: 'active' },
+  { label: 'Archives', value: 'archived' },
 ]
 
 const editableStatusOptions: Array<{ label: string; value: DealStatus }> = [
@@ -23,6 +28,15 @@ type DealEditDraft = {
   status: DealStatus
   ownerId: string
 }
+
+type DealCreateDraft = {
+  company: string
+  description: string
+  action: string
+  deadline: string
+}
+
+type SortKey = 'company' | 'deadline' | 'owner' | 'status'
 
 function capitalizeFirst(value: string): string {
   if (!value) {
@@ -47,14 +61,28 @@ function firstNameFromUser(user: UserMapping): string {
 }
 
 export function PipelinePage() {
+  const today = new Date().toISOString().slice(0, 10)
   const [rows, setRows] = useState<Deal[]>([])
   const [users, setUsers] = useState<UserMapping[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [scope, setScope] = useState<DealScope>('all')
   const [status, setStatus] = useState<DealStatus | 'all'>('all')
+  const [sortKey, setSortKey] = useState<SortKey>('deadline')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [importing, setImporting] = useState(false)
   const [importMessage, setImportMessage] = useState<string | null>(null)
+  const [createDraft, setCreateDraft] = useState<DealCreateDraft>({
+    company: '',
+    description: '',
+    action: '',
+    deadline: today,
+  })
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [statusUpdatingDealId, setStatusUpdatingDealId] = useState<string | null>(null)
+  const [deletingDealId, setDeletingDealId] = useState<string | null>(null)
   const [editingDealId, setEditingDealId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<DealEditDraft | null>(null)
   const [saving, setSaving] = useState(false)
@@ -63,7 +91,7 @@ export function PipelinePage() {
   async function loadDeals() {
     setLoading(true)
     try {
-      const [dealsData, usersData] = await Promise.all([fetchDeals(), fetchUsers()])
+      const [dealsData, usersData] = await Promise.all([fetchDeals(scope), fetchUsers()])
       setRows(dealsData)
       setUsers(usersData)
       setError(null)
@@ -85,12 +113,36 @@ export function PipelinePage() {
     setImportMessage(null)
     try {
       const result = await importDealsFromExcel(file)
-      setImportMessage(`Import termine: ${result.imported} ajoutes, ${result.skipped} ignores.`)
+      setImportMessage(`Import termine: ${result.imported} dossiers ajoutes, ${result.skipped} lignes ignorees.`)
       await loadDeals()
     } catch (err: unknown) {
       setImportMessage(err instanceof Error ? `Import echoue: ${err.message}` : 'Import echoue')
     } finally {
       setImporting(false)
+    }
+  }
+
+  async function handleCreateDeal() {
+    setCreateError(null)
+    const company = createDraft.company.trim()
+    const description = createDraft.description.trim()
+    const action = createDraft.action.trim()
+    const deadline = createDraft.deadline
+
+    if (!company || !description || !action || !deadline) {
+      setCreateError('Tous les champs du nouveau dossier sont obligatoires.')
+      return
+    }
+
+    setCreating(true)
+    try {
+      await createDeal({ company, description, action, deadline })
+      setCreateDraft({ company: '', description: '', action: '', deadline })
+      await loadDeals()
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : 'Erreur lors de la creation du dossier')
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -130,9 +182,58 @@ export function PipelinePage() {
     }
   }
 
+  async function updateDealStatusQuick(deal: Deal, nextStatus: DealStatus) {
+    setStatusUpdatingDealId(deal.id)
+    setEditError(null)
+    try {
+      await updateDeal(deal.id, {
+        description: deal.description,
+        action: deal.action,
+        deadline: deal.deadline,
+        status: nextStatus,
+        ownerId: deal.ownerId,
+      })
+      await loadDeals()
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Erreur de changement de statut')
+    } finally {
+      setStatusUpdatingDealId(null)
+    }
+  }
+
+  async function deleteDealQuick(deal: Deal) {
+    const confirmed = window.confirm(`Supprimer le dossier ${deal.company} ?`)
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingDealId(deal.id)
+    setEditError(null)
+    try {
+      await deleteDeal(deal.id)
+      await loadDeals()
+      if (editingDealId === deal.id) {
+        cancelEdit()
+      }
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Erreur de suppression')
+    } finally {
+      setDeletingDealId(null)
+    }
+  }
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    setSortDirection('asc')
+  }
+
   useEffect(() => {
     void loadDeals().catch(() => undefined)
-  }, [])
+  }, [scope])
 
   const ownerOptions = useMemo(() => {
     const firstNameCounts = new Map<string, number>()
@@ -164,47 +265,79 @@ export function PipelinePage() {
           (ownerLabelById.get(deal.ownerId) ?? deal.owner).toLowerCase().includes(normalized)
         )
       })
-      .sort((a, b) => a.deadline.localeCompare(b.deadline))
-  }, [query, rows, status, ownerLabelById])
+      .sort((a, b) => {
+        let result = 0
+        if (sortKey === 'deadline') {
+          result = a.deadline.localeCompare(b.deadline)
+        } else if (sortKey === 'company') {
+          result = a.company.localeCompare(b.company)
+        } else if (sortKey === 'owner') {
+          const ownerA = ownerLabelById.get(a.ownerId) ?? a.owner
+          const ownerB = ownerLabelById.get(b.ownerId) ?? b.owner
+          result = ownerA.localeCompare(ownerB)
+        } else {
+          result = a.status.localeCompare(b.status)
+        }
+        return sortDirection === 'asc' ? result : -result
+      })
+  }, [ownerLabelById, query, rows, sortDirection, sortKey, status])
 
-  const today = new Date().toISOString().slice(0, 10)
+  function sortIndicator(key: SortKey): string {
+    if (sortKey !== key) {
+      return '↕'
+    }
+    return sortDirection === 'asc' ? '↑' : '↓'
+  }
 
   if (loading) {
     return <p className="text-sm text-slate-500">Chargement du pipeline...</p>
   }
 
   if (error) {
-    return <p className="text-sm text-red-600">Erreur API: {error}</p>
+    return <p className="text-sm text-red-600">Une erreur est survenue: {error}</p>
   }
 
   return (
-    <div className="space-y-5">
-      <header>
-        <h1 className="font-heading text-2xl font-semibold">Pipeline</h1>
-        <p className="text-sm text-slate-500">Gestion des dossiers actifs, gagnes et perdus.</p>
+    <div className="space-y-5 edge-enter">
+      <header className="edge-panel p-5 md:p-6">
+        <p className="edge-eyebrow">Suivi des opportunites</p>
+        <h1 className="edge-title mt-2 font-heading text-3xl font-semibold text-slate-900">Pipeline</h1>
+        <p className="mt-2 text-sm text-slate-600">Gestion des dossiers actifs et archives avec edition rapide.</p>
       </header>
 
-      <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 md:flex-row md:items-center md:justify-between">
+      <section className="edge-panel flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between">
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Rechercher entreprise, owner, description"
+          placeholder="Rechercher entreprise, responsable, description"
           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 md:max-w-md"
         />
         <div className="flex flex-wrap gap-2">
-          {statusOptions.map((option) => (
+          {scopeOptions.map((option) => (
             <button
               key={option.value}
               type="button"
-              onClick={() => setStatus(option.value)}
-              className={`rounded-xl px-3 py-2 text-sm font-medium ${
-                status === option.value ? 'bg-edge-primary text-black' : 'bg-white text-slate-600 hover:bg-slate-100'
+              onClick={() => setScope(option.value)}
+              className={`rounded-2xl px-3 py-2 text-sm font-medium transition ${
+                scope === option.value ? 'bg-black text-white' : 'bg-white text-slate-600 hover:bg-slate-100'
               }`}
             >
               {option.label}
             </button>
           ))}
-          <label className="cursor-pointer rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+          {statusOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setStatus(option.value)}
+              className={`rounded-2xl px-3 py-2 text-sm font-medium transition ${
+                status === option.value ? 'bg-amber-200 text-black' : 'bg-white text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+          <label className="cursor-pointer rounded-2xl bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100">
             {importing ? 'Import en cours...' : 'Importer Excel'}
             <input
               type="file"
@@ -219,20 +352,89 @@ export function PipelinePage() {
         </div>
       </section>
 
+      <section className="edge-panel p-4">
+        <h2 className="font-heading text-base font-semibold text-slate-900">Nouveau dossier</h2>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <label className="text-sm text-slate-700">
+            Entreprise
+            <input
+              value={createDraft.company}
+              onChange={(event) => setCreateDraft({ ...createDraft, company: event.target.value })}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="text-sm text-slate-700">
+            Deadline
+            <input
+              type="date"
+              value={createDraft.deadline}
+              onChange={(event) => setCreateDraft({ ...createDraft, deadline: event.target.value })}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="text-sm text-slate-700 md:col-span-2">
+            Description
+            <textarea
+              value={createDraft.description}
+              onChange={(event) => setCreateDraft({ ...createDraft, description: event.target.value })}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              rows={3}
+            />
+          </label>
+          <label className="text-sm text-slate-700 md:col-span-2">
+            Prochaine action
+            <input
+              value={createDraft.action}
+              onChange={(event) => setCreateDraft({ ...createDraft, action: event.target.value })}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+        {createError ? <p className="mt-3 text-sm text-red-600">{createError}</p> : null}
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => {
+              void handleCreateDeal()
+            }}
+            disabled={creating}
+            className="rounded-lg bg-edge-primary px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
+          >
+            {creating ? 'Creation...' : 'Creer le dossier'}
+          </button>
+        </div>
+      </section>
+
       {importMessage ? <p className="text-sm text-slate-600">{importMessage}</p> : null}
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200">
+      <section className="edge-panel overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-left text-[15px]">
-            <thead className="bg-slate-50 text-sm text-slate-600">
+            <thead className="bg-slate-50/80 text-sm text-slate-600">
               <tr>
-                <th className="px-4 py-3 font-heading font-medium">Entreprise</th>
+                <th className="px-4 py-3 font-heading font-medium">
+                  <button type="button" onClick={() => toggleSort('company')} className="inline-flex items-center gap-1 hover:text-slate-900">
+                    Entreprise <span className="text-xs text-slate-400">{sortIndicator('company')}</span>
+                  </button>
+                </th>
                 <th className="px-4 py-3 font-heading font-medium">Description</th>
                 <th className="px-4 py-3 font-heading font-medium">Action</th>
-                <th className="px-4 py-3 font-heading font-medium">Deadline</th>
-                <th className="px-4 py-3 font-heading font-medium">Owner</th>
-                <th className="px-4 py-3 font-heading font-medium">Statut</th>
-                <th className="px-4 py-3 font-heading font-medium">Edition</th>
+                <th className="px-4 py-3 font-heading font-medium">
+                  <button type="button" onClick={() => toggleSort('deadline')} className="inline-flex items-center gap-1 hover:text-slate-900">
+                    Deadline <span className="text-xs text-slate-400">{sortIndicator('deadline')}</span>
+                  </button>
+                </th>
+                <th className="px-4 py-3 font-heading font-medium">
+                  <button type="button" onClick={() => toggleSort('owner')} className="inline-flex items-center gap-1 hover:text-slate-900">
+                    Responsable <span className="text-xs text-slate-400">{sortIndicator('owner')}</span>
+                  </button>
+                </th>
+                <th className="px-4 py-3 font-heading font-medium">
+                  <button type="button" onClick={() => toggleSort('status')} className="inline-flex items-center gap-1 hover:text-slate-900">
+                    Statut <span className="text-xs text-slate-400">{sortIndicator('status')}</span>
+                  </button>
+                </th>
+                <th className="px-4 py-3 font-heading font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -254,13 +456,60 @@ export function PipelinePage() {
                       <StatusBadge status={deal.status} />
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(deal)}
-                        className="rounded-lg border border-slate-200 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100"
-                      >
-                        Editer
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(deal)}
+                          className="rounded-lg border border-slate-200 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                          Editer
+                        </button>
+                        {deal.status === 'active' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void updateDealStatusQuick(deal, 'won')
+                              }}
+                              disabled={statusUpdatingDealId === deal.id}
+                              className="rounded-lg border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+                            >
+                              Gagne
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void updateDealStatusQuick(deal, 'lost')
+                              }}
+                              disabled={statusUpdatingDealId === deal.id}
+                              className="rounded-lg border border-rose-300 px-3 py-1 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                            >
+                              Perdu
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void updateDealStatusQuick(deal, 'active')
+                            }}
+                            disabled={statusUpdatingDealId === deal.id}
+                            className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                          >
+                            Reouvrir
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void deleteDealQuick(deal)
+                          }}
+                          disabled={deletingDealId === deal.id}
+                          className="rounded-lg border border-red-300 px-3 py-1 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                        >
+                          {deletingDealId === deal.id ? 'Suppression...' : 'Supprimer'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
 
@@ -315,7 +564,7 @@ export function PipelinePage() {
                           </label>
 
                           <label className="text-sm text-slate-700 md:col-span-2">
-                            Owner
+                            Responsable
                             <select
                               value={editDraft.ownerId}
                               onChange={(event) => setEditDraft({ ...editDraft, ownerId: event.target.value })}
