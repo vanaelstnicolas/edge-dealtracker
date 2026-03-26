@@ -208,3 +208,18 @@ def update_deal(deal_id: str, payload: DealUpdate, current_user: dict[str, Any] 
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deal not found")
     return updated
+
+
+@router.delete("/{deal_id}")
+def delete_deal(deal_id: str, current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, str]:
+    user_id = str(current_user["id"])
+    admin = _is_admin(current_user)
+
+    visible_rows = store.list_deals(status=None, owner_id=None if admin else user_id)
+    if all(deal.id != deal_id for deal in visible_rows):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deal not found")
+
+    deleted = store.delete_deal(deal_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deal not found")
+    return {"result": "deleted"}

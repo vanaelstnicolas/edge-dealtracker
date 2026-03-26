@@ -7,9 +7,9 @@ const labels: Record<DealStatus, string> = {
 }
 
 const classes: Record<DealStatus, string> = {
-  active: 'bg-edge-primary text-black',
-  won: 'bg-edge-success text-black',
-  lost: 'bg-slate-200 text-slate-700',
+  active: 'border border-amber-300 bg-amber-100 text-amber-900',
+  won: 'border border-emerald-300 bg-emerald-100 text-emerald-900',
+  lost: 'border border-slate-300 bg-slate-100 text-slate-700',
 }
 
 type StatusBadgeProps = {
@@ -18,7 +18,7 @@ type StatusBadgeProps = {
 
 export function StatusBadge({ status }: StatusBadgeProps) {
   return (
-    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${classes[status]}`}>
+    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold tracking-[0.02em] ${classes[status]}`}>
       {labels[status]}
     </span>
   )

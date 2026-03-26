@@ -85,6 +85,16 @@ class SupabaseStore:
             return None
         return DealRead.model_validate(rows[0])
 
+    def delete_deal(self, deal_id: str) -> bool:
+        response = self._client.delete(
+            "/deals",
+            params={"id": f"eq.{deal_id}"},
+            headers={"Prefer": "return=representation"},
+        )
+        response.raise_for_status()
+        rows = response.json()
+        return bool(rows)
+
     def dashboard_kpis(self, owner_id: str | None = None) -> DashboardKPIs:
         params = {"select": "status"}
         if owner_id is not None:

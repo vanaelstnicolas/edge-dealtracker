@@ -19,7 +19,7 @@ type ApiUserMapping = {
 }
 
 type RequestOptions = {
-  method?: 'GET' | 'PUT' | 'POST' | 'PATCH'
+  method?: 'GET' | 'PUT' | 'POST' | 'PATCH' | 'DELETE'
   body?: unknown
   isFormData?: boolean
 }
@@ -239,6 +239,13 @@ export async function updateDeal(dealId: string, payload: DealUpdatePayload): Pr
       status: payload.status,
       owner_id: payload.ownerId,
     },
+  })
+  invalidateGetCache(['/deals', '/dashboard/kpis', '/summary/me'])
+}
+
+export async function deleteDeal(dealId: string): Promise<void> {
+  await request<{ result: string }>(`/deals/${dealId}`, {
+    method: 'DELETE',
   })
   invalidateGetCache(['/deals', '/dashboard/kpis', '/summary/me'])
 }

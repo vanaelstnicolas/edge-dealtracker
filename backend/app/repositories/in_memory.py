@@ -73,6 +73,12 @@ class InMemoryStore:
         self.deals[deal_id] = updated
         return updated
 
+    def delete_deal(self, deal_id: str) -> bool:
+        if deal_id not in self.deals:
+            return False
+        del self.deals[deal_id]
+        return True
+
     def dashboard_kpis(self, owner_id: str | None = None) -> DashboardKPIs:
         rows: Iterable[DealRead] = self.deals.values()
         if owner_id is not None:

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { StatusBadge } from '../components/StatusBadge'
-import { createDeal, fetchDeals, fetchUsers, importDealsFromExcel, updateDeal, type DealScope } from '../lib/api'
+import { createDeal, deleteDeal, fetchDeals, fetchUsers, importDealsFromExcel, updateDeal, type DealScope } from '../lib/api'
 import type { Deal, DealStatus, UserMapping } from '../types/deal'
 
 const statusOptions: Array<{ label: string; value: DealStatus | 'all' }> = [
@@ -36,6 +36,8 @@ type DealCreateDraft = {
   deadline: string
 }
 
+type SortKey = 'company' | 'deadline' | 'owner' | 'status'
+
 function capitalizeFirst(value: string): string {
   if (!value) {
     return value
@@ -67,6 +69,7 @@ export function PipelinePage() {
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<DealScope>('all')
   const [status, setStatus] = useState<DealStatus | 'all'>('all')
+  const [sortKey, setSortKey] = useState<SortKey>('deadline')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [importing, setImporting] = useState(false)
   const [importMessage, setImportMessage] = useState<string | null>(null)
@@ -79,6 +82,7 @@ export function PipelinePage() {
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [statusUpdatingDealId, setStatusUpdatingDealId] = useState<string | null>(null)
+  const [deletingDealId, setDeletingDealId] = useState<string | null>(null)
   const [editingDealId, setEditingDealId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<DealEditDraft | null>(null)
   const [saving, setSaving] = useState(false)
@@ -109,7 +113,7 @@ export function PipelinePage() {
     setImportMessage(null)
     try {
       const result = await importDealsFromExcel(file)
-      setImportMessage(`Import termine: ${result.imported} ajoutes, ${result.skipped} ignores.`)
+      setImportMessage(`Import termine: ${result.imported} dossiers ajoutes, ${result.skipped} lignes ignorees.`)
       await loadDeals()
     } catch (err: unknown) {
       setImportMessage(err instanceof Error ? `Import echoue: ${err.message}` : 'Import echoue')
@@ -197,6 +201,36 @@ export function PipelinePage() {
     }
   }
 
+  async function deleteDealQuick(deal: Deal) {
+    const confirmed = window.confirm(`Supprimer le dossier ${deal.company} ?`)
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingDealId(deal.id)
+    setEditError(null)
+    try {
+      await deleteDeal(deal.id)
+      await loadDeals()
+      if (editingDealId === deal.id) {
+        cancelEdit()
+      }
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Erreur de suppression')
+    } finally {
+      setDeletingDealId(null)
+    }
+  }
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    setSortDirection('asc')
+  }
+
   useEffect(() => {
     void loadDeals().catch(() => undefined)
   }, [scope])
@@ -232,27 +266,46 @@ export function PipelinePage() {
         )
       })
       .sort((a, b) => {
-        const result = a.deadline.localeCompare(b.deadline)
+        let result = 0
+        if (sortKey === 'deadline') {
+          result = a.deadline.localeCompare(b.deadline)
+        } else if (sortKey === 'company') {
+          result = a.company.localeCompare(b.company)
+        } else if (sortKey === 'owner') {
+          const ownerA = ownerLabelById.get(a.ownerId) ?? a.owner
+          const ownerB = ownerLabelById.get(b.ownerId) ?? b.owner
+          result = ownerA.localeCompare(ownerB)
+        } else {
+          result = a.status.localeCompare(b.status)
+        }
         return sortDirection === 'asc' ? result : -result
       })
-  }, [query, rows, sortDirection, status, ownerLabelById])
+  }, [ownerLabelById, query, rows, sortDirection, sortKey, status])
+
+  function sortIndicator(key: SortKey): string {
+    if (sortKey !== key) {
+      return '↕'
+    }
+    return sortDirection === 'asc' ? '↑' : '↓'
+  }
 
   if (loading) {
     return <p className="text-sm text-slate-500">Chargement du pipeline...</p>
   }
 
   if (error) {
-    return <p className="text-sm text-red-600">Erreur API: {error}</p>
+    return <p className="text-sm text-red-600">Une erreur est survenue: {error}</p>
   }
 
   return (
-    <div className="space-y-5">
-      <header>
-        <h1 className="font-heading text-2xl font-semibold">Pipeline</h1>
-        <p className="text-sm text-slate-500">Gestion des dossiers actifs, gagnes et perdus.</p>
+    <div className="space-y-5 edge-enter">
+      <header className="edge-panel p-5 md:p-6">
+        <p className="edge-eyebrow">Suivi des opportunites</p>
+        <h1 className="edge-title mt-2 font-heading text-3xl font-semibold text-slate-900">Pipeline</h1>
+        <p className="mt-2 text-sm text-slate-600">Gestion des dossiers actifs et archives avec edition rapide.</p>
       </header>
 
-      <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 md:flex-row md:items-center md:justify-between">
+      <section className="edge-panel flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between">
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -265,8 +318,8 @@ export function PipelinePage() {
               key={option.value}
               type="button"
               onClick={() => setScope(option.value)}
-              className={`rounded-xl px-3 py-2 text-sm font-medium ${
-                scope === option.value ? 'bg-edge-primary text-black' : 'bg-white text-slate-600 hover:bg-slate-100'
+              className={`rounded-2xl px-3 py-2 text-sm font-medium transition ${
+                scope === option.value ? 'bg-black text-white' : 'bg-white text-slate-600 hover:bg-slate-100'
               }`}
             >
               {option.label}
@@ -277,21 +330,14 @@ export function PipelinePage() {
               key={option.value}
               type="button"
               onClick={() => setStatus(option.value)}
-              className={`rounded-xl px-3 py-2 text-sm font-medium ${
-                status === option.value ? 'bg-edge-primary text-black' : 'bg-white text-slate-600 hover:bg-slate-100'
+              className={`rounded-2xl px-3 py-2 text-sm font-medium transition ${
+                status === option.value ? 'bg-amber-200 text-black' : 'bg-white text-slate-600 hover:bg-slate-100'
               }`}
             >
               {option.label}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))}
-            className="rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-          >
-            Deadline {sortDirection === 'asc' ? 'croissante' : 'decroissante'}
-          </button>
-          <label className="cursor-pointer rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+          <label className="cursor-pointer rounded-2xl bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100">
             {importing ? 'Import en cours...' : 'Importer Excel'}
             <input
               type="file"
@@ -306,7 +352,7 @@ export function PipelinePage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4">
+      <section className="edge-panel p-4">
         <h2 className="font-heading text-base font-semibold text-slate-900">Nouveau dossier</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <label className="text-sm text-slate-700">
@@ -361,17 +407,33 @@ export function PipelinePage() {
 
       {importMessage ? <p className="text-sm text-slate-600">{importMessage}</p> : null}
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200">
+      <section className="edge-panel overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-left text-[15px]">
-            <thead className="bg-slate-50 text-sm text-slate-600">
+            <thead className="bg-slate-50/80 text-sm text-slate-600">
               <tr>
-                <th className="px-4 py-3 font-heading font-medium">Entreprise</th>
+                <th className="px-4 py-3 font-heading font-medium">
+                  <button type="button" onClick={() => toggleSort('company')} className="inline-flex items-center gap-1 hover:text-slate-900">
+                    Entreprise <span className="text-xs text-slate-400">{sortIndicator('company')}</span>
+                  </button>
+                </th>
                 <th className="px-4 py-3 font-heading font-medium">Description</th>
                 <th className="px-4 py-3 font-heading font-medium">Action</th>
-                <th className="px-4 py-3 font-heading font-medium">Deadline</th>
-                <th className="px-4 py-3 font-heading font-medium">Responsable</th>
-                <th className="px-4 py-3 font-heading font-medium">Statut</th>
+                <th className="px-4 py-3 font-heading font-medium">
+                  <button type="button" onClick={() => toggleSort('deadline')} className="inline-flex items-center gap-1 hover:text-slate-900">
+                    Deadline <span className="text-xs text-slate-400">{sortIndicator('deadline')}</span>
+                  </button>
+                </th>
+                <th className="px-4 py-3 font-heading font-medium">
+                  <button type="button" onClick={() => toggleSort('owner')} className="inline-flex items-center gap-1 hover:text-slate-900">
+                    Responsable <span className="text-xs text-slate-400">{sortIndicator('owner')}</span>
+                  </button>
+                </th>
+                <th className="px-4 py-3 font-heading font-medium">
+                  <button type="button" onClick={() => toggleSort('status')} className="inline-flex items-center gap-1 hover:text-slate-900">
+                    Statut <span className="text-xs text-slate-400">{sortIndicator('status')}</span>
+                  </button>
+                </th>
                 <th className="px-4 py-3 font-heading font-medium">Actions</th>
               </tr>
             </thead>
@@ -437,6 +499,16 @@ export function PipelinePage() {
                             Reouvrir
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void deleteDealQuick(deal)
+                          }}
+                          disabled={deletingDealId === deal.id}
+                          className="rounded-lg border border-red-300 px-3 py-1 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                        >
+                          {deletingDealId === deal.id ? 'Suppression...' : 'Supprimer'}
+                        </button>
                       </div>
                     </td>
                   </tr>

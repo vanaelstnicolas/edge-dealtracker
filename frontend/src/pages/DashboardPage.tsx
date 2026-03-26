@@ -113,27 +113,28 @@ export function DashboardPage() {
   }
 
   if (error) {
-    return <p className="text-sm text-red-600">Erreur API: {error}</p>
+    return <p className="text-sm text-red-600">Une erreur est survenue: {error}</p>
   }
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="font-heading text-2xl font-semibold">Dashboard commercial</h1>
-        <p className="text-sm text-slate-500">Vue temps reel du pipeline et des risques.</p>
+    <div className="space-y-6 edge-enter">
+      <header className="edge-panel p-5 md:p-6">
+        <p className="edge-eyebrow">Vue d'ensemble</p>
+        <h1 className="edge-title mt-2 font-heading text-3xl font-semibold text-slate-900">Dashboard commercial</h1>
+        <p className="mt-2 text-sm text-slate-600">Vue temps reel du pipeline, des retards et de la pression par collaborateur.</p>
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <article key={card.label} className="rounded-2xl border border-slate-200 bg-white p-4">
-            <p className="text-sm text-slate-500">{card.label}</p>
+          <article key={card.label} className="edge-panel p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{card.label}</p>
             <p className="mt-2 font-heading text-3xl font-semibold text-slate-900">{card.value}</p>
           </article>
         ))}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <article className="rounded-2xl border border-red-100 bg-red-50 p-4">
+        <article className="edge-panel p-4">
           <h2 className="font-heading text-lg font-semibold text-red-700">Alertes deadline</h2>
           <ul className="mt-3 space-y-2 text-sm text-red-700">
             {lateDeals.length === 0 && <li>Aucun retard detecte.</li>}
@@ -145,7 +146,7 @@ export function DashboardPage() {
           </ul>
         </article>
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-4">
+        <article className="edge-panel p-4">
           <h2 className="font-heading text-lg font-semibold text-slate-900">Charge par collaborateur</h2>
           <div className="mt-4 space-y-3">
             {Object.entries(
@@ -163,7 +164,7 @@ export function DashboardPage() {
                 </div>
                 <div className="h-2 rounded-full bg-slate-100">
                   <div
-                    className="h-2 rounded-full bg-edge-primary"
+                    className="h-2 rounded-full bg-amber-300"
                     style={{ width: `${Math.min(100, count * 25)}%` }}
                   />
                 </div>
@@ -173,9 +174,9 @@ export function DashboardPage() {
         </article>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4">
+      <section className="edge-panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-heading text-lg font-semibold text-slate-900">Mon resume to-do</h2>
+          <h2 className="font-heading text-lg font-semibold text-slate-900">Mon resume d'actions</h2>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -194,7 +195,7 @@ export function DashboardPage() {
                   setSummaryLoading(false)
                 }
               }}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
+              className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
             >
               {summaryLoading ? 'Chargement...' : 'Afficher mon resume'}
             </button>
@@ -207,7 +208,7 @@ export function DashboardPage() {
                 setSummaryStatus(null)
                 try {
                   const result = await sendMyActionSummary()
-                  setSummaryStatus('Resume envoye. Verifiez le detail de livraison par canal ci-dessous.')
+                  setSummaryStatus('Resume envoye. Tu peux verifier la livraison juste en dessous.')
                   setSummaryDelivery({ whatsapp: result.whatsapp, email: result.email })
                 } catch (err: unknown) {
                   setSummaryDelivery(null)
@@ -216,7 +217,7 @@ export function DashboardPage() {
                   setSendingSummary(false)
                 }
               }}
-              className="rounded-xl bg-edge-primary px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
+              className="rounded-2xl bg-black px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
             >
               {sendingSummary ? 'Envoi...' : 'Envoyer sur WhatsApp + Email'}
             </button>
@@ -254,7 +255,7 @@ export function DashboardPage() {
                 {summary.items.map((item, index) => {
                   const badgeStatus = toDealStatus(item.status)
                   return (
-                    <li key={`${item.company}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <li key={`${item.company}-${index}`} className="edge-panel-soft px-3 py-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium text-slate-900">{item.company}</span>
                         {badgeStatus ? <StatusBadge status={badgeStatus} /> : null}

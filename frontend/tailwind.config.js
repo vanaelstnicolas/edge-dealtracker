@@ -5,17 +5,17 @@ export default {
     extend: {
       colors: {
         edge: {
-          bg: '#ffffff',
-          text: '#000000',
-          primary: '#CCBFFF',
-          success: '#D0F1E3',
-          muted: '#f4f4f5',
+          bg: '#f4f4ef',
+          text: '#111318',
+          primary: '#e6d2a2',
+          success: '#d0f1e3',
+          muted: '#ecece6',
           danger: '#b42318',
         },
       },
       fontFamily: {
-        heading: ['DegularDemo-Medium', 'Helvetica', 'Arial', 'sans-serif'],
-        body: ['Helvetica', 'Roboto', 'Arial', 'sans-serif'],
+        heading: ['Newsreader', 'Georgia', 'serif'],
+        body: ['Manrope', 'Segoe UI', 'sans-serif'],
       },
       boxShadow: {
         card: '0 10px 24px rgba(15, 23, 42, 0.08)',
