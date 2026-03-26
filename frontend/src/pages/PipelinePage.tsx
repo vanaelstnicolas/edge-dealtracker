@@ -1,13 +1,18 @@
 import { Fragment, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { StatusBadge } from '../components/StatusBadge'
-import { fetchDeals, fetchUsers, importDealsFromExcel, updateDeal } from '../lib/api'
+import { createDeal, fetchDeals, fetchUsers, importDealsFromExcel, updateDeal, type DealScope } from '../lib/api'
 import type { Deal, DealStatus, UserMapping } from '../types/deal'
 
 const statusOptions: Array<{ label: string; value: DealStatus | 'all' }> = [
   { label: 'Tous', value: 'all' },
-  { label: 'Actifs', value: 'active' },
   { label: 'Gagnes', value: 'won' },
   { label: 'Perdus', value: 'lost' },
+]
+
+const scopeOptions: Array<{ label: string; value: DealScope }> = [
+  { label: 'Tous', value: 'all' },
+  { label: 'Actifs', value: 'active' },
+  { label: 'Archives', value: 'archived' },
 ]
 
 const editableStatusOptions: Array<{ label: string; value: DealStatus }> = [
@@ -22,6 +27,13 @@ type DealEditDraft = {
   deadline: string
   status: DealStatus
   ownerId: string
+}
+
+type DealCreateDraft = {
+  company: string
+  description: string
+  action: string
+  deadline: string
 }
 
 function capitalizeFirst(value: string): string {
@@ -47,14 +59,26 @@ function firstNameFromUser(user: UserMapping): string {
 }
 
 export function PipelinePage() {
+  const today = new Date().toISOString().slice(0, 10)
   const [rows, setRows] = useState<Deal[]>([])
   const [users, setUsers] = useState<UserMapping[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [scope, setScope] = useState<DealScope>('all')
   const [status, setStatus] = useState<DealStatus | 'all'>('all')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [importing, setImporting] = useState(false)
   const [importMessage, setImportMessage] = useState<string | null>(null)
+  const [createDraft, setCreateDraft] = useState<DealCreateDraft>({
+    company: '',
+    description: '',
+    action: '',
+    deadline: today,
+  })
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [statusUpdatingDealId, setStatusUpdatingDealId] = useState<string | null>(null)
   const [editingDealId, setEditingDealId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<DealEditDraft | null>(null)
   const [saving, setSaving] = useState(false)
@@ -63,7 +87,7 @@ export function PipelinePage() {
   async function loadDeals() {
     setLoading(true)
     try {
-      const [dealsData, usersData] = await Promise.all([fetchDeals(), fetchUsers()])
+      const [dealsData, usersData] = await Promise.all([fetchDeals(scope), fetchUsers()])
       setRows(dealsData)
       setUsers(usersData)
       setError(null)
@@ -91,6 +115,30 @@ export function PipelinePage() {
       setImportMessage(err instanceof Error ? `Import echoue: ${err.message}` : 'Import echoue')
     } finally {
       setImporting(false)
+    }
+  }
+
+  async function handleCreateDeal() {
+    setCreateError(null)
+    const company = createDraft.company.trim()
+    const description = createDraft.description.trim()
+    const action = createDraft.action.trim()
+    const deadline = createDraft.deadline
+
+    if (!company || !description || !action || !deadline) {
+      setCreateError('Tous les champs du nouveau dossier sont obligatoires.')
+      return
+    }
+
+    setCreating(true)
+    try {
+      await createDeal({ company, description, action, deadline })
+      setCreateDraft({ company: '', description: '', action: '', deadline })
+      await loadDeals()
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : 'Erreur lors de la creation du dossier')
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -130,9 +178,28 @@ export function PipelinePage() {
     }
   }
 
+  async function updateDealStatusQuick(deal: Deal, nextStatus: DealStatus) {
+    setStatusUpdatingDealId(deal.id)
+    setEditError(null)
+    try {
+      await updateDeal(deal.id, {
+        description: deal.description,
+        action: deal.action,
+        deadline: deal.deadline,
+        status: nextStatus,
+        ownerId: deal.ownerId,
+      })
+      await loadDeals()
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Erreur de changement de statut')
+    } finally {
+      setStatusUpdatingDealId(null)
+    }
+  }
+
   useEffect(() => {
     void loadDeals().catch(() => undefined)
-  }, [])
+  }, [scope])
 
   const ownerOptions = useMemo(() => {
     const firstNameCounts = new Map<string, number>()
@@ -164,10 +231,11 @@ export function PipelinePage() {
           (ownerLabelById.get(deal.ownerId) ?? deal.owner).toLowerCase().includes(normalized)
         )
       })
-      .sort((a, b) => a.deadline.localeCompare(b.deadline))
-  }, [query, rows, status, ownerLabelById])
-
-  const today = new Date().toISOString().slice(0, 10)
+      .sort((a, b) => {
+        const result = a.deadline.localeCompare(b.deadline)
+        return sortDirection === 'asc' ? result : -result
+      })
+  }, [query, rows, sortDirection, status, ownerLabelById])
 
   if (loading) {
     return <p className="text-sm text-slate-500">Chargement du pipeline...</p>
@@ -192,6 +260,18 @@ export function PipelinePage() {
           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 md:max-w-md"
         />
         <div className="flex flex-wrap gap-2">
+          {scopeOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setScope(option.value)}
+              className={`rounded-xl px-3 py-2 text-sm font-medium ${
+                scope === option.value ? 'bg-edge-primary text-black' : 'bg-white text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
           {statusOptions.map((option) => (
             <button
               key={option.value}
@@ -204,6 +284,13 @@ export function PipelinePage() {
               {option.label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))}
+            className="rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Deadline {sortDirection === 'asc' ? 'croissante' : 'decroissante'}
+          </button>
           <label className="cursor-pointer rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
             {importing ? 'Import en cours...' : 'Importer Excel'}
             <input
@@ -216,6 +303,59 @@ export function PipelinePage() {
               className="hidden"
             />
           </label>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4">
+        <h2 className="font-heading text-base font-semibold text-slate-900">Nouveau dossier</h2>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <label className="text-sm text-slate-700">
+            Entreprise
+            <input
+              value={createDraft.company}
+              onChange={(event) => setCreateDraft({ ...createDraft, company: event.target.value })}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="text-sm text-slate-700">
+            Deadline
+            <input
+              type="date"
+              value={createDraft.deadline}
+              onChange={(event) => setCreateDraft({ ...createDraft, deadline: event.target.value })}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="text-sm text-slate-700 md:col-span-2">
+            Description
+            <textarea
+              value={createDraft.description}
+              onChange={(event) => setCreateDraft({ ...createDraft, description: event.target.value })}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              rows={3}
+            />
+          </label>
+          <label className="text-sm text-slate-700 md:col-span-2">
+            Prochaine action
+            <input
+              value={createDraft.action}
+              onChange={(event) => setCreateDraft({ ...createDraft, action: event.target.value })}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+        {createError ? <p className="mt-3 text-sm text-red-600">{createError}</p> : null}
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => {
+              void handleCreateDeal()
+            }}
+            disabled={creating}
+            className="rounded-lg bg-edge-primary px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
+          >
+            {creating ? 'Creation...' : 'Creer le dossier'}
+          </button>
         </div>
       </section>
 
@@ -254,13 +394,50 @@ export function PipelinePage() {
                       <StatusBadge status={deal.status} />
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(deal)}
-                        className="rounded-lg border border-slate-200 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100"
-                      >
-                        Editer
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(deal)}
+                          className="rounded-lg border border-slate-200 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                          Editer
+                        </button>
+                        {deal.status === 'active' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void updateDealStatusQuick(deal, 'won')
+                              }}
+                              disabled={statusUpdatingDealId === deal.id}
+                              className="rounded-lg border border-emerald-300 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+                            >
+                              Gagne
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void updateDealStatusQuick(deal, 'lost')
+                              }}
+                              disabled={statusUpdatingDealId === deal.id}
+                              className="rounded-lg border border-rose-300 px-3 py-1 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                            >
+                              Perdu
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void updateDealStatusQuick(deal, 'active')
+                            }}
+                            disabled={statusUpdatingDealId === deal.id}
+                            className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                          >
+                            Reouvrir
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
 

@@ -126,6 +126,8 @@ type DealImportResult = {
   errors: string[]
 }
 
+export type DealScope = 'all' | 'active' | 'archived'
+
 export type ActionSummaryItem = {
   company: string
   action: string
@@ -171,9 +173,10 @@ export async function sendWhatsappTest(userId: string): Promise<{ messageSid: st
   return { messageSid: row.message_sid }
 }
 
-export async function fetchDeals(): Promise<Deal[]> {
+export async function fetchDeals(scope: DealScope = 'all'): Promise<Deal[]> {
+  const dealsPath = scope === 'all' ? '/deals' : `/deals?scope=${scope}`
   const [deals, users] = await Promise.all([
-    request<ApiDeal[]>('/deals'),
+    request<ApiDeal[]>(dealsPath),
     request<ApiUserMapping[]>('/settings/users'),
   ])
 
@@ -198,6 +201,34 @@ type DealUpdatePayload = {
   ownerId: string
 }
 
+type DealCreatePayload = {
+  company: string
+  description: string
+  action: string
+  deadline: string
+}
+
+export async function createDeal(payload: DealCreatePayload): Promise<void> {
+  const session = supabase ? (await supabase.auth.getSession()).data.session : null
+  const ownerId = session?.user?.id
+  if (!ownerId) {
+    throw new Error('Session introuvable pour creer un dossier')
+  }
+
+  await request<ApiDeal>('/deals', {
+    method: 'POST',
+    body: {
+      company: payload.company,
+      description: payload.description,
+      action: payload.action,
+      deadline: payload.deadline,
+      owner_id: ownerId,
+      status: 'active',
+    },
+  })
+  invalidateGetCache(['/deals', '/dashboard/kpis', '/summary/me'])
+}
+
 export async function updateDeal(dealId: string, payload: DealUpdatePayload): Promise<void> {
   await request<ApiDeal>(`/deals/${dealId}`, {
     method: 'PATCH',
@@ -209,7 +240,7 @@ export async function updateDeal(dealId: string, payload: DealUpdatePayload): Pr
       owner_id: payload.ownerId,
     },
   })
-  invalidateGetCache(['/deals'])
+  invalidateGetCache(['/deals', '/dashboard/kpis', '/summary/me'])
 }
 
 export async function fetchMyActionSummary(): Promise<MyActionSummary> {
