@@ -47,6 +47,16 @@ Keep these only as fallback while migrating:
 - `WEEKLY_SUMMARY_TIMEZONE`
 - `WEEKLY_SUMMARY_DAY_OF_WEEK`
 - `WEEKLY_SUMMARY_HOUR`
+- `WEEKLY_SUMMARY_MINUTE`
+
+## Optional failure alerts
+
+To get operational visibility when summary delivery fails (Graph/API exceptions, SMTP errors, WhatsApp send errors), set:
+
+- `SUMMARY_ALERT_WEBHOOK_URL` (HTTP endpoint to receive JSON alert payloads)
+- `SUMMARY_ALERT_TIMEOUT_SECONDS` (default `5`)
+
+Alert payload includes: `event`, `operation`, `channel`, `owner_id`, `owner_name`, `owner_email`, `error`.
 
 ## Entra ID / Graph prerequisites
 
@@ -62,6 +72,8 @@ Keep these only as fallback while migrating:
 3. Confirm:
    - `email_provider_effective` is `graph`
    - `graph_configured` is `true`
+   - scheduler target matches FR6 (`day_of_week=mon`, `hour=8`, `minute=0` unless explicitly overridden)
+   - `summary_alert_webhook_configured` is `true` when alerting is enabled
 4. Trigger manual send via `POST /api/summary/weekly/trigger`.
 5. Verify mailbox reception and monitor fallback behavior (if enabled).
 

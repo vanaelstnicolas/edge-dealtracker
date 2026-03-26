@@ -18,6 +18,7 @@ from app.repositories.in_memory import store
 from app.schemas.deal import DealCreate, DealStatus, DealUpdate
 from app.services.action_summary import build_owner_summary_text
 from app.services.notifications import send_whatsapp_message
+from app.services.rate_limit import enforce_rate_limit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -329,6 +330,13 @@ async def receive_twilio_webhook(request: Request) -> Response:
     media_content_type = data.get("MediaContentType0")
 
     phone = from_number.replace("whatsapp:", "")
+    enforce_rate_limit(
+        bucket="twilio_webhook",
+        key=phone or (request.client.host if request.client else "unknown"),
+        limit=settings.twilio_rate_limit_per_phone,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
+
     user = store.find_user_by_whatsapp(phone)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown WhatsApp sender")

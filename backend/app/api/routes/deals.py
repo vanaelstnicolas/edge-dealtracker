@@ -1,5 +1,6 @@
 from datetime import date
 from io import BytesIO
+from typing import Literal
 from typing import Any
 import unicodedata
 
@@ -7,8 +8,10 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from openpyxl import load_workbook
 
 from app.api.deps.auth import get_current_user
+from app.config import settings
 from app.repositories.in_memory import store
 from app.schemas.deal import DealCreate, DealRead, DealStatus, DealUpdate
+from app.services.rate_limit import enforce_rate_limit
 
 router = APIRouter()
 
@@ -89,6 +92,14 @@ def import_deals_excel(
     current_user: dict[str, Any] = Depends(get_current_user),
     file: UploadFile = File(...),
 ) -> dict[str, Any]:
+    owner_id = str(current_user["id"])
+    enforce_rate_limit(
+        bucket="deals_import",
+        key=owner_id,
+        limit=settings.deals_import_rate_limit_per_user,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
+
     file_name = (file.filename or "").lower()
     if not file_name.endswith(".xlsx"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .xlsx files are supported")
@@ -110,7 +121,6 @@ def import_deals_excel(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Excel sheet is empty")
 
     header_row_index, positions = _extract_headers(rows)
-    owner_id = str(current_user["id"])
     imported = 0
     skipped = 0
     errors: list[str] = []
@@ -160,11 +170,18 @@ def list_deals(
     current_user: dict[str, Any] = Depends(get_current_user),
     status_value: DealStatus | None = Query(default=None, alias="status"),
     owner_id: str | None = Query(default=None),
+    scope: Literal["all", "active", "archived"] = Query(default="all"),
 ) -> list[DealRead]:
     user_id = str(current_user["id"])
     if owner_id is not None and owner_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden owner scope")
-    return store.list_deals(status=status_value, owner_id=user_id)
+
+    deals = store.list_deals(status=status_value, owner_id=user_id)
+    if scope == "active":
+        return [deal for deal in deals if deal.status == DealStatus.active]
+    if scope == "archived":
+        return [deal for deal in deals if deal.status in {DealStatus.won, DealStatus.lost}]
+    return deals
 
 
 @router.post("", response_model=DealRead, status_code=status.HTTP_201_CREATED)

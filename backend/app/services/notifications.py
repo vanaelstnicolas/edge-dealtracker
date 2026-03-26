@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import smtplib
 import time
 from email.message import EmailMessage
@@ -11,6 +12,7 @@ from app.config import settings
 
 MAX_WHATSAPP_BODY_LENGTH = 1500
 GRAPH_SCOPE = "https://graph.microsoft.com/.default"
+logger = logging.getLogger(__name__)
 
 _GRAPH_TOKEN_CACHE: dict[str, float | str] = {
     "access_token": "",
@@ -246,3 +248,53 @@ def send_email_message(*, to_email: str, subject: str, body: str) -> None:
         return
 
     raise RuntimeError("No email provider configured (Graph or SMTP)")
+
+
+def report_summary_delivery_failure(
+    *,
+    operation: str,
+    channel: str,
+    owner_id: str,
+    owner_name: str,
+    owner_email: str,
+    error: Exception | str,
+) -> None:
+    error_text = str(error).strip() or "unknown_error"
+    logger.warning(
+        "summary_delivery_failed operation=%s channel=%s owner_id=%s owner_email=%s error=%s",
+        operation,
+        channel,
+        owner_id,
+        owner_email,
+        error_text,
+    )
+
+    webhook_url = settings.summary_alert_webhook_url.strip()
+    if not webhook_url:
+        return
+
+    payload = {
+        "event": "summary_delivery_failed",
+        "operation": operation,
+        "channel": channel,
+        "owner_id": owner_id,
+        "owner_name": owner_name,
+        "owner_email": owner_email,
+        "error": error_text,
+    }
+
+    try:
+        response = httpx.post(
+            webhook_url,
+            json=payload,
+            timeout=max(1, settings.summary_alert_timeout_seconds),
+        )
+        response.raise_for_status()
+    except Exception as alert_error:  # pragma: no cover - defensive
+        logger.warning(
+            "summary_alert_webhook_failed operation=%s channel=%s owner_id=%s error=%s",
+            operation,
+            channel,
+            owner_id,
+            alert_error,
+        )
