@@ -95,10 +95,13 @@ class InMemoryStore:
 
     def upsert_user_profile(self, user_id: str, email: str, full_name: str) -> UserMapping:
         existing = self.users.get(user_id)
+        effective_full_name = full_name
+        if existing and existing.full_name.strip():
+            effective_full_name = existing.full_name
         updated = UserMapping(
             id=user_id,
             email=email,
-            full_name=full_name,
+            full_name=effective_full_name,
             whatsapp_number=existing.whatsapp_number if existing else None,
         )
         self.users[user_id] = updated
