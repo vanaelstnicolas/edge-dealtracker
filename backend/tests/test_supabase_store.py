@@ -19,6 +19,7 @@ class MockResponse:
 
 def test_upsert_user_profile_returns_merged_user(monkeypatch) -> None:
     store = SupabaseStore("https://example.supabase.co", "service-role-key")
+    monkeypatch.setattr(store, "_get", lambda *args, **kwargs: [])
 
     def fake_post(*args, **kwargs):
         assert kwargs["params"]["on_conflict"] == "id"
@@ -50,6 +51,7 @@ def test_upsert_user_profile_returns_merged_user(monkeypatch) -> None:
 
 def test_upsert_user_profile_raises_on_email_conflict(monkeypatch) -> None:
     store = SupabaseStore("https://example.supabase.co", "service-role-key")
+    monkeypatch.setattr(store, "_get", lambda *args, **kwargs: [])
 
     request = httpx.Request("POST", "https://example.supabase.co/rest/v1/users")
     response = httpx.Response(
@@ -71,3 +73,43 @@ def test_upsert_user_profile_raises_on_email_conflict(monkeypatch) -> None:
             email="existing@example.com",
             full_name="Existing User",
         )
+
+
+def test_upsert_user_profile_preserves_existing_full_name(monkeypatch) -> None:
+    store = SupabaseStore("https://example.supabase.co", "service-role-key")
+
+    monkeypatch.setattr(
+        store,
+        "_get",
+        lambda *args, **kwargs: [
+            {
+                "id": "00000000-0000-0000-0000-000000000014",
+                "email": "existing@example.com",
+                "full_name": "Nico",
+                "whatsapp_number": None,
+            }
+        ],
+    )
+
+    def fake_post(*args, **kwargs):
+        assert kwargs["json"]["full_name"] == "Nico"
+        return MockResponse(
+            payload=[
+                {
+                    "id": "00000000-0000-0000-0000-000000000014",
+                    "email": "existing@example.com",
+                    "full_name": "Nico",
+                    "whatsapp_number": None,
+                }
+            ]
+        )
+
+    monkeypatch.setattr(store._client, "post", fake_post)
+
+    user = store.upsert_user_profile(
+        user_id="00000000-0000-0000-0000-000000000014",
+        email="existing@example.com",
+        full_name="Given Name From Entra",
+    )
+
+    assert user.full_name == "Nico"

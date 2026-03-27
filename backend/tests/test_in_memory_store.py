@@ -54,5 +54,5 @@ def test_upsert_user_profile_keeps_whatsapp_number() -> None:
 
     assert updated.id == "u-1"
     assert updated.email == "nicolas.updated@example.com"
-    assert updated.full_name == "Nicolas Updated"
+    assert updated.full_name == "Nicolas Ferrand"
     assert updated.whatsapp_number == "+33612345678"

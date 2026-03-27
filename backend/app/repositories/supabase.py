@@ -115,11 +115,25 @@ class SupabaseStore:
         return [UserMapping.model_validate(row) for row in rows]
 
     def upsert_user_profile(self, user_id: str, email: str, full_name: str) -> UserMapping:
+        existing_rows = self._get(
+            "/users",
+            params={
+                "id": f"eq.{user_id}",
+                "select": "id,full_name,email,whatsapp_number",
+                "limit": "1",
+            },
+        )
+        effective_full_name = full_name
+        if existing_rows:
+            existing_name = str(existing_rows[0].get("full_name") or "").strip()
+            if existing_name:
+                effective_full_name = existing_name
+
         response = self._client.post(
             "/users",
             params={"on_conflict": "id", "select": "id,full_name,email,whatsapp_number"},
             headers={"Prefer": "resolution=merge-duplicates,return=representation"},
-            json={"id": user_id, "email": email, "full_name": full_name},
+            json={"id": user_id, "email": email, "full_name": effective_full_name},
         )
         response.raise_for_status()
         rows = response.json()
