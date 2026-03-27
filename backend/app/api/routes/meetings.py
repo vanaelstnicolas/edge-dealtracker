@@ -30,7 +30,7 @@ class MeetingExtractRequest(BaseModel):
 class MeetingAction(BaseModel):
     operation: Literal["create", "update", "close", "ignore"]
     company: str = Field(default="", max_length=140)
-    description: str = Field(default="", max_length=2000)
+    description: str = Field(default="", max_length=500)
     action: str = Field(default="", max_length=500)
     deadline: str = Field(default="")
     status: Literal["", "won", "lost"] = ""

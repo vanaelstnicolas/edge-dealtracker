@@ -169,7 +169,7 @@ def _heuristic_command_from_natural_text(message: str) -> str | None:
     else:
         action = "Planifier le prochain contact"
 
-    description = raw[:240]
+    description = raw[:500]
     return f"create {company}|{description}|{action}|{deadline}"
 
 

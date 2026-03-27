@@ -143,7 +143,7 @@ def import_deals_excel(
         if len(action) < 2:
             action = "A qualifier"
 
-        normalized_description = description[:2000]
+        normalized_description = description[:500]
         normalized_action = action[:500]
         normalized_company = company[:140]
 
@@ -172,11 +172,7 @@ def list_deals(
     owner_id: str | None = Query(default=None),
     scope: Literal["all", "active", "archived"] = Query(default="all"),
 ) -> list[DealRead]:
-    user_id = str(current_user["id"])
-    if owner_id is not None and owner_id != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden owner scope")
-
-    deals = store.list_deals(status=status_value, owner_id=user_id)
+    deals = store.list_deals(status=status_value, owner_id=owner_id)
     if scope == "active":
         return [deal for deal in deals if deal.status == DealStatus.active]
     if scope == "archived":

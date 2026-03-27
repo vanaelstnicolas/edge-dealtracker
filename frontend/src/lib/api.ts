@@ -25,7 +25,7 @@ type RequestOptions = {
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api'
-const requestTimeoutMs = 12000
+const requestTimeoutMs = 30000
 const getCacheTtlMs = 30000
 const getCache = new Map<string, { expiresAt: number; data: unknown }>()
 const inflightGetRequests = new Map<string, Promise<unknown>>()
@@ -109,7 +109,7 @@ async function performRequest<T>(path: string, options: RequestOptions, accessTo
     })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error(`Delai depasse (${requestTimeoutMs / 1000}s) pour ${path}`)
+      throw new Error("La requete prend plus de temps que prevu. Reessaie dans quelques secondes.")
     }
     throw error
   } finally {
@@ -198,11 +198,11 @@ export async function fetchDeals(scope: DealScope = 'all'): Promise<Deal[]> {
 }
 
 type DealUpdatePayload = {
-  description: string
-  action: string
-  deadline: string
-  status: DealStatus
-  ownerId: string
+  description?: string
+  action?: string
+  deadline?: string
+  status?: DealStatus
+  ownerId?: string
 }
 
 type DealCreatePayload = {
@@ -234,15 +234,26 @@ export async function createDeal(payload: DealCreatePayload): Promise<void> {
 }
 
 export async function updateDeal(dealId: string, payload: DealUpdatePayload): Promise<void> {
+  const body: Record<string, unknown> = {}
+  if (payload.description !== undefined) {
+    body.description = payload.description
+  }
+  if (payload.action !== undefined) {
+    body.action = payload.action
+  }
+  if (payload.deadline !== undefined) {
+    body.deadline = payload.deadline
+  }
+  if (payload.status !== undefined) {
+    body.status = payload.status
+  }
+  if (payload.ownerId !== undefined) {
+    body.owner_id = payload.ownerId
+  }
+
   await request<ApiDeal>(`/deals/${dealId}`, {
     method: 'PATCH',
-    body: {
-      description: payload.description,
-      action: payload.action,
-      deadline: payload.deadline,
-      status: payload.status,
-      owner_id: payload.ownerId,
-    },
+    body,
   })
   invalidateGetCache(['/deals', '/dashboard/kpis', '/summary/me'])
 }
