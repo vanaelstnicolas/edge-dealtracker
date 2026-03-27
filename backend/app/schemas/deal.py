@@ -33,8 +33,14 @@ class DealUpdate(BaseModel):
     owner_id: Optional[str] = Field(default=None, min_length=2, max_length=120)
 
 
-class DealRead(DealBase):
+class DealRead(BaseModel):
     id: str
+    company: str
+    description: str
+    action: str
+    deadline: date
+    owner_id: str
+    status: DealStatus = DealStatus.active
     created_at: datetime
     closed_at: Optional[datetime] = None
 
