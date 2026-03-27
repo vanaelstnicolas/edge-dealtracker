@@ -5,19 +5,19 @@ import type { Deal, DealStatus, UserMapping } from '../types/deal'
 
 const statusOptions: Array<{ label: string; value: DealStatus | 'all' }> = [
   { label: 'Tous', value: 'all' },
-  { label: 'Gagnes', value: 'won' },
+  { label: 'Gagnés', value: 'won' },
   { label: 'Perdus', value: 'lost' },
 ]
 
 const scopeOptions: Array<{ label: string; value: DealScope }> = [
   { label: 'Tous', value: 'all' },
   { label: 'Actifs', value: 'active' },
-  { label: 'Archives', value: 'archived' },
+  { label: 'Archivés', value: 'archived' },
 ]
 
 const editableStatusOptions: Array<{ label: string; value: DealStatus }> = [
   { label: 'Actif', value: 'active' },
-  { label: 'Gagne', value: 'won' },
+  { label: 'Gagné', value: 'won' },
   { label: 'Perdu', value: 'lost' },
 ]
 
@@ -110,6 +110,7 @@ export function PipelinePage() {
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<DealScope>('all')
+  const [ownerFilter, setOwnerFilter] = useState<string>('all')
   const [status, setStatus] = useState<DealStatus | 'all'>('all')
   const [sortKey, setSortKey] = useState<SortKey>('deadline')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
@@ -358,6 +359,7 @@ export function PipelinePage() {
   const deals = useMemo(() => {
     const normalized = query.toLowerCase().trim()
     return rows
+      .filter((deal) => (ownerFilter === 'all' ? true : deal.ownerId === ownerFilter))
       .filter((deal) => (status === 'all' ? true : deal.status === status))
       .filter((deal) => {
         if (!normalized) {
@@ -384,7 +386,7 @@ export function PipelinePage() {
         }
         return sortDirection === 'asc' ? result : -result
       })
-  }, [ownerLabelById, query, rows, sortDirection, sortKey, status])
+  }, [ownerFilter, ownerLabelById, query, rows, sortDirection, sortKey, status])
 
   function sortIndicator(key: SortKey): string {
     if (sortKey !== key) {
@@ -452,6 +454,21 @@ export function PipelinePage() {
               disabled={importing}
               className="hidden"
             />
+          </label>
+          <label className="rounded-2xl bg-white px-3 py-2 text-sm font-medium text-slate-700">
+            Collaborateur
+            <select
+              value={ownerFilter}
+              onChange={(event) => setOwnerFilter(event.target.value)}
+              className="ml-2 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm"
+            >
+              <option value="all">Tous</option>
+              {ownerOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       </section>
