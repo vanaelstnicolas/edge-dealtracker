@@ -14,7 +14,7 @@ class DealStatus(str, Enum):
 class DealBase(BaseModel):
     company: str = Field(min_length=2, max_length=140)
     description: str = Field(min_length=2, max_length=2000)
-    action: str = Field(min_length=2, max_length=240)
+    action: str = Field(min_length=2, max_length=500)
     deadline: date
     owner_id: str = Field(min_length=2, max_length=120)
     status: DealStatus = DealStatus.active
@@ -27,7 +27,7 @@ class DealCreate(DealBase):
 class DealUpdate(BaseModel):
     company: Optional[str] = Field(default=None, min_length=2, max_length=140)
     description: Optional[str] = Field(default=None, min_length=2, max_length=2000)
-    action: Optional[str] = Field(default=None, min_length=2, max_length=240)
+    action: Optional[str] = Field(default=None, min_length=2, max_length=500)
     deadline: Optional[date] = None
     status: Optional[DealStatus] = None
     owner_id: Optional[str] = Field(default=None, min_length=2, max_length=120)

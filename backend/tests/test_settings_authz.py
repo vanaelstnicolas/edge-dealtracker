@@ -37,7 +37,7 @@ def test_settings_update_forbidden_for_other_non_admin_user(monkeypatch) -> None
     response = client.put(
         "/api/settings/users/u-2",
         headers={"Authorization": "Bearer test-token"},
-        json={"whatsapp_number": "+33612345679"},
+        json={"full_name": "User Two", "whatsapp_number": "+33612345679"},
     )
 
     assert response.status_code == 403
@@ -116,9 +116,9 @@ def test_settings_update_allowed_for_admin_user(monkeypatch) -> None:
     monkeypatch.setattr(
         settings_route.store,
         "update_user_mapping",
-        lambda user_id, whatsapp_number: {
+        lambda user_id, whatsapp_number, full_name: {
             "id": user_id,
-            "full_name": "Claire Dubois",
+            "full_name": full_name,
             "email": "claire@edge-consulting.fr",
             "whatsapp_number": whatsapp_number,
         },
@@ -127,7 +127,7 @@ def test_settings_update_allowed_for_admin_user(monkeypatch) -> None:
     response = client.put(
         "/api/settings/users/u-2",
         headers={"Authorization": "Bearer test-token"},
-        json={"whatsapp_number": "+33612345679"},
+        json={"full_name": "Claire", "whatsapp_number": "+33612345679"},
     )
 
     assert response.status_code == 200

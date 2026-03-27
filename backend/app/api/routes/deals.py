@@ -144,7 +144,7 @@ def import_deals_excel(
             action = "A qualifier"
 
         normalized_description = description[:2000]
-        normalized_action = action[:240]
+        normalized_action = action[:500]
         normalized_company = company[:140]
 
         deal = DealCreate(

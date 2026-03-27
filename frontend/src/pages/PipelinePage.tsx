@@ -46,18 +46,57 @@ function capitalizeFirst(value: string): string {
 }
 
 function firstNameFromUser(user: UserMapping): string {
+  const nameBased = user.fullName.trim().split(/\s+/)[0]
+  if (nameBased) {
+    return capitalizeFirst(nameBased)
+  }
+
   const emailLocalPart = user.email.split('@')[0] ?? ''
   const emailBased = emailLocalPart.split(/[._-]/)[0]?.trim()
   if (emailBased) {
     return capitalizeFirst(emailBased)
   }
 
-  const nameBased = user.fullName.trim().split(/\s+/)[0]
-  if (nameBased) {
-    return capitalizeFirst(nameBased)
+  return user.id
+}
+
+function humanizeApiError(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) {
+    return fallback
   }
 
-  return user.id
+  const raw = error.message.trim()
+  if (!raw.startsWith('{')) {
+    return raw || fallback
+  }
+
+  try {
+    const payload = JSON.parse(raw) as {
+      detail?: Array<{ loc?: Array<string | number>; type?: string; msg?: string }>
+    }
+    const first = payload.detail?.[0]
+    if (!first) {
+      return fallback
+    }
+
+    const loc = (first.loc ?? []).join('.')
+    if (loc.includes('action') && first.type === 'string_too_short') {
+      return "L'action est trop courte. Ajoute au moins 2 caracteres."
+    }
+    if (loc.includes('action') && first.type === 'string_too_long') {
+      return "L'action est trop longue. Maximum 500 caracteres."
+    }
+    if (loc.includes('description') && first.type === 'string_too_short') {
+      return 'La description est trop courte. Ajoute plus de contexte.'
+    }
+    if (loc.includes('company') && first.type === 'string_too_short') {
+      return "Le nom d'entreprise est trop court."
+    }
+
+    return first.msg || fallback
+  } catch {
+    return raw || fallback
+  }
 }
 
 export function PipelinePage() {
@@ -133,6 +172,18 @@ export function PipelinePage() {
       setCreateError('Tous les champs du nouveau dossier sont obligatoires.')
       return
     }
+    if (action.length < 2) {
+      setCreateError("L'action est trop courte. Ajoute au moins 2 caracteres.")
+      return
+    }
+    if (action.length > 500) {
+      setCreateError("L'action est trop longue. Maximum 500 caracteres.")
+      return
+    }
+    if (description.length < 2) {
+      setCreateError('La description est trop courte.')
+      return
+    }
 
     setCreating(true)
     try {
@@ -140,7 +191,7 @@ export function PipelinePage() {
       setCreateDraft({ company: '', description: '', action: '', deadline })
       await loadDeals()
     } catch (err: unknown) {
-      setCreateError(err instanceof Error ? err.message : 'Erreur lors de la creation du dossier')
+      setCreateError(humanizeApiError(err, 'Erreur lors de la creation du dossier'))
     } finally {
       setCreating(false)
     }
@@ -169,6 +220,19 @@ export function PipelinePage() {
       return
     }
 
+    if (editDraft.action.trim().length < 2) {
+      setEditError("L'action est trop courte. Ajoute au moins 2 caracteres.")
+      return
+    }
+    if (editDraft.action.trim().length > 500) {
+      setEditError("L'action est trop longue. Maximum 500 caracteres.")
+      return
+    }
+    if (editDraft.description.trim().length < 2) {
+      setEditError('La description est trop courte. Ajoute plus de detail.')
+      return
+    }
+
     setSaving(true)
     setEditError(null)
     try {
@@ -176,7 +240,7 @@ export function PipelinePage() {
       await loadDeals()
       cancelEdit()
     } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : 'Erreur de sauvegarde')
+      setEditError(humanizeApiError(err, 'Erreur de sauvegarde'))
     } finally {
       setSaving(false)
     }

@@ -66,7 +66,11 @@ def update_user_mapping(
     if user_id != current_user_id and not _is_admin(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden owner scope")
 
-    updated = store.update_user_mapping(user_id=user_id, whatsapp_number=payload.whatsapp_number)
+    updated = store.update_user_mapping(
+        user_id=user_id,
+        whatsapp_number=payload.whatsapp_number,
+        full_name=payload.full_name,
+    )
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return updated
