@@ -45,7 +45,11 @@ function toDisplayName(email: string, fullName: string): string {
     return email
   }
 
-  return localPart
+  const token = localPart.split(/[._-]/)[0]?.trim() ?? localPart
+  if (!token) {
+    return localPart
+  }
+  return token.charAt(0).toUpperCase() + token.slice(1)
 }
 
 function invalidateGetCache(prefixes: string[]): void {
@@ -110,6 +114,9 @@ async function performRequest<T>(path: string, options: RequestOptions, accessTo
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error("La requete prend plus de temps que prevu. Reessaie dans quelques secondes.")
+    }
+    if (error instanceof TypeError) {
+      throw new Error("Impossible de contacter le serveur pour le moment. Verifie ta connexion et reessaie.")
     }
     throw error
   } finally {
