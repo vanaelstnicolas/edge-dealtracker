@@ -89,6 +89,9 @@ function humanizeApiError(error: unknown, fallback: string): string {
     if (loc.includes('description') && first.type === 'string_too_short') {
       return 'La description est trop courte. Ajoute plus de contexte.'
     }
+    if (loc.includes('description') && first.type === 'string_too_long') {
+      return 'La description est trop longue. Maximum 500 caracteres.'
+    }
     if (loc.includes('company') && first.type === 'string_too_short') {
       return "Le nom d'entreprise est trop court."
     }
@@ -184,6 +187,10 @@ export function PipelinePage() {
       setCreateError('La description est trop courte.')
       return
     }
+    if (description.length > 500) {
+      setCreateError('La description est trop longue. Maximum 500 caracteres.')
+      return
+    }
 
     setCreating(true)
     try {
@@ -220,23 +227,62 @@ export function PipelinePage() {
       return
     }
 
-    if (editDraft.action.trim().length < 2) {
+    const currentDeal = rows.find((row) => row.id === editingDealId)
+    if (!currentDeal) {
+      setEditError('Le dossier est introuvable. Recharge la page puis recommence.')
+      return
+    }
+
+    const payload: {
+      description?: string
+      action?: string
+      deadline?: string
+      status?: DealStatus
+      ownerId?: string
+    } = {}
+
+    if (editDraft.description !== currentDeal.description) {
+      payload.description = editDraft.description
+    }
+    if (editDraft.action !== currentDeal.action) {
+      payload.action = editDraft.action
+    }
+    if (editDraft.deadline !== currentDeal.deadline) {
+      payload.deadline = editDraft.deadline
+    }
+    if (editDraft.status !== currentDeal.status) {
+      payload.status = editDraft.status
+    }
+    if (editDraft.ownerId !== currentDeal.ownerId) {
+      payload.ownerId = editDraft.ownerId
+    }
+
+    if (Object.keys(payload).length === 0) {
+      cancelEdit()
+      return
+    }
+
+    if (payload.action !== undefined && payload.action.trim().length < 2) {
       setEditError("L'action est trop courte. Ajoute au moins 2 caracteres.")
       return
     }
-    if (editDraft.action.trim().length > 500) {
+    if (payload.action !== undefined && payload.action.trim().length > 500) {
       setEditError("L'action est trop longue. Maximum 500 caracteres.")
       return
     }
-    if (editDraft.description.trim().length < 2) {
+    if (payload.description !== undefined && payload.description.trim().length < 2) {
       setEditError('La description est trop courte. Ajoute plus de detail.')
+      return
+    }
+    if (payload.description !== undefined && payload.description.trim().length > 500) {
+      setEditError('La description est trop longue. Maximum 500 caracteres.')
       return
     }
 
     setSaving(true)
     setEditError(null)
     try {
-      await updateDeal(editingDealId, editDraft)
+      await updateDeal(editingDealId, payload)
       await loadDeals()
       cancelEdit()
     } catch (err: unknown) {
@@ -250,16 +296,10 @@ export function PipelinePage() {
     setStatusUpdatingDealId(deal.id)
     setEditError(null)
     try {
-      await updateDeal(deal.id, {
-        description: deal.description,
-        action: deal.action,
-        deadline: deal.deadline,
-        status: nextStatus,
-        ownerId: deal.ownerId,
-      })
+      await updateDeal(deal.id, { status: nextStatus })
       await loadDeals()
     } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : 'Erreur de changement de statut')
+      setEditError(humanizeApiError(err, 'Erreur de changement de statut'))
     } finally {
       setStatusUpdatingDealId(null)
     }
@@ -447,10 +487,11 @@ export function PipelinePage() {
           </label>
           <label className="text-sm text-slate-700 md:col-span-2">
             Prochaine action
-            <input
+            <textarea
               value={createDraft.action}
               onChange={(event) => setCreateDraft({ ...createDraft, action: event.target.value })}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              rows={3}
             />
           </label>
         </div>
@@ -506,8 +547,8 @@ export function PipelinePage() {
                 <Fragment key={deal.id}>
                   <tr className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium text-slate-900">{deal.company}</td>
-                    <td className="px-4 py-3 text-slate-600">{deal.description}</td>
-                    <td className="px-4 py-3 text-slate-700">{deal.action}</td>
+                    <td className="whitespace-pre-line px-4 py-3 text-slate-600">{deal.description}</td>
+                    <td className="whitespace-pre-line px-4 py-3 text-slate-700">{deal.action}</td>
                     <td
                       className={`px-4 py-3 ${
                         deal.status === 'active' && deal.deadline < today ? 'font-semibold text-red-700' : ''
@@ -593,10 +634,11 @@ export function PipelinePage() {
 
                           <label className="text-sm text-slate-700">
                             Action
-                            <input
+                            <textarea
                               value={editDraft.action}
                               onChange={(event) => setEditDraft({ ...editDraft, action: event.target.value })}
                               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                              rows={3}
                             />
                           </label>
 

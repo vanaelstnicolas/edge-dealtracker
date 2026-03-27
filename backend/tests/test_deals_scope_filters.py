@@ -36,14 +36,14 @@ def _configure_auth(monkeypatch) -> None:
     monkeypatch.setattr(auth.store, "upsert_user_profile", lambda *args, **kwargs: None)
 
 
-def _deal(deal_id: str, status: DealStatus) -> DealRead:
+def _deal(deal_id: str, status: DealStatus, owner_id: str = "u-1") -> DealRead:
     return DealRead(
         id=deal_id,
         company="ACME",
         description="desc",
         action="action",
         deadline=date(2026, 4, 1),
-        owner_id="u-1",
+        owner_id=owner_id,
         status=status,
         created_at=datetime.now(timezone.utc),
     )
@@ -81,3 +81,24 @@ def test_list_deals_scope_active(monkeypatch) -> None:
     rows = response.json()
     assert len(rows) == 1
     assert rows[0]["id"] == "dl-1"
+
+
+def test_list_deals_returns_all_visible_owners(monkeypatch) -> None:
+    client = TestClient(app)
+    _configure_auth(monkeypatch)
+    monkeypatch.setattr(
+        deals_route.store,
+        "list_deals",
+        lambda status=None, owner_id=None: [
+            _deal("dl-1", DealStatus.active, owner_id="u-1"),
+            _deal("dl-2", DealStatus.active, owner_id="u-2"),
+        ],
+    )
+
+    response = client.get("/api/deals", headers={"Authorization": "Bearer test-token"})
+
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 2
+    owners = {item["owner_id"] for item in rows}
+    assert owners == {"u-1", "u-2"}
