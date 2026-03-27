@@ -125,12 +125,12 @@ class SupabaseStore:
         rows = response.json()
         return UserMapping.model_validate(rows[0])
 
-    def update_user_mapping(self, user_id: str, whatsapp_number: str) -> UserMapping | None:
+    def update_user_mapping(self, user_id: str, whatsapp_number: str, full_name: str) -> UserMapping | None:
         response = self._client.patch(
             "/users",
             params={"id": f"eq.{user_id}", "select": "id,full_name,email,whatsapp_number"},
             headers={"Prefer": "return=representation"},
-            json={"whatsapp_number": whatsapp_number},
+            json={"whatsapp_number": whatsapp_number, "full_name": full_name},
         )
         response.raise_for_status()
         rows = response.json()

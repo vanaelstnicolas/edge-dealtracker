@@ -64,9 +64,9 @@ def test_business_smoke_login_deals_settings(monkeypatch) -> None:
     monkeypatch.setattr(
         settings.store,
         "update_user_mapping",
-        lambda user_id, whatsapp_number: {
+        lambda user_id, whatsapp_number, full_name: {
             "id": user_id,
-            "full_name": "User One",
+            "full_name": full_name,
             "email": "user1@example.com",
             "whatsapp_number": whatsapp_number,
         },
@@ -88,7 +88,7 @@ def test_business_smoke_login_deals_settings(monkeypatch) -> None:
     settings_update = client.put(
         "/api/settings/users/u-1",
         headers={"Authorization": "Bearer test-token"},
-        json={"whatsapp_number": "+33699990000"},
+        json={"full_name": "Nico", "whatsapp_number": "+33699990000"},
     )
     assert settings_update.status_code == 200
     assert settings_update.json()["whatsapp_number"] == "+33699990000"

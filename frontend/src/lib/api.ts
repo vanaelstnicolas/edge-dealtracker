@@ -34,14 +34,18 @@ function cacheKey(path: string, accessToken: string | undefined): string {
   return `${accessToken ?? 'anon'}::${path}`
 }
 
-function toFirstNameFromEmailOrName(email: string, fallbackName: string): string {
-  const localPart = email.split('@')[0]?.trim() ?? ''
-  const emailToken = localPart.split(/[._-]/)[0]?.trim()
-  const raw = emailToken || fallbackName.split(/\s+/)[0]?.trim() || fallbackName
-  if (!raw) {
-    return fallbackName
+function toDisplayName(email: string, fullName: string): string {
+  const preferred = fullName.trim()
+  if (preferred) {
+    return preferred
   }
-  return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()
+
+  const localPart = email.split('@')[0]?.trim() ?? ''
+  if (!localPart) {
+    return email
+  }
+
+  return localPart
 }
 
 function invalidateGetCache(prefixes: string[]): void {
@@ -152,10 +156,10 @@ export async function fetchUsers(): Promise<UserMapping[]> {
   }))
 }
 
-export async function updateUserWhatsapp(userId: string, whatsappNumber: string): Promise<UserMapping> {
+export async function updateUserProfile(userId: string, payload: { fullName: string; whatsappNumber: string }): Promise<UserMapping> {
   const row = await request<ApiUserMapping>(`/settings/users/${userId}`, {
     method: 'PUT',
-    body: { whatsapp_number: whatsappNumber },
+    body: { full_name: payload.fullName, whatsapp_number: payload.whatsappNumber },
   })
   invalidateGetCache(['/settings/users', '/deals'])
   return {
@@ -180,7 +184,7 @@ export async function fetchDeals(scope: DealScope = 'all'): Promise<Deal[]> {
     request<ApiUserMapping[]>('/settings/users'),
   ])
 
-  const ownerById = new Map(users.map((user) => [user.id, toFirstNameFromEmailOrName(user.email, user.full_name)]))
+  const ownerById = new Map(users.map((user) => [user.id, toDisplayName(user.email, user.full_name)]))
   return deals.map((deal) => ({
     id: deal.id,
     company: deal.company,

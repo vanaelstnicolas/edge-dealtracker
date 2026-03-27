@@ -9,4 +9,5 @@ class UserMapping(BaseModel):
 
 
 class UserMappingUpdate(BaseModel):
+    full_name: str = Field(min_length=2, max_length=120)
     whatsapp_number: str = Field(pattern=r"^\+[1-9]\d{6,14}$")

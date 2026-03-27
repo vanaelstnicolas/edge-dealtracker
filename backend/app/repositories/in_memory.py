@@ -104,11 +104,11 @@ class InMemoryStore:
         self.users[user_id] = updated
         return updated
 
-    def update_user_mapping(self, user_id: str, whatsapp_number: str) -> UserMapping | None:
+    def update_user_mapping(self, user_id: str, whatsapp_number: str, full_name: str) -> UserMapping | None:
         user = self.users.get(user_id)
         if user is None:
             return None
-        updated = user.model_copy(update={"whatsapp_number": whatsapp_number})
+        updated = user.model_copy(update={"whatsapp_number": whatsapp_number, "full_name": full_name})
         self.users[user_id] = updated
         return updated
 
