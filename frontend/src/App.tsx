@@ -6,6 +6,7 @@ import { prefetchCoreData } from './lib/api'
 import { supabase } from './lib/supabase'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
+import { MeetingsPage } from './pages/MeetingsPage'
 import { PipelinePage } from './pages/PipelinePage'
 import { SettingsPage } from './pages/SettingsPage'
 
@@ -77,6 +78,7 @@ function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
+            <Route path="/meetings" element={<MeetingsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>

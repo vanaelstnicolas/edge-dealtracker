@@ -5,6 +5,7 @@ import edgeLogo from '../assets/logo.svg'
 const links = [
   { path: '/dashboard', label: 'Vue globale' },
   { path: '/pipeline', label: 'Pipeline' },
+  { path: '/meetings', label: 'Reunions' },
   { path: '/settings', label: 'Paramètres' },
 ]
 
