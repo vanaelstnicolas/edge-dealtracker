@@ -7,6 +7,7 @@ type RequestOptions = {
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api'
+const requestTimeoutMs = 45000
 
 export type MeetingAction = {
   operation: 'create' | 'update' | 'close' | 'ignore'
@@ -24,21 +25,51 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const session = supabase ? (await supabase.auth.getSession()).data.session : null
   const accessToken = session?.access_token
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    method: options.method ?? 'GET',
-    headers: {
-      ...(options.isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: options.body
-      ? options.isFormData
-        ? (options.body as FormData)
-        : JSON.stringify(options.body)
-      : undefined,
-  })
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs)
+
+  let response: Response
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      method: options.method ?? 'GET',
+      headers: {
+        ...(options.isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: options.body
+        ? options.isFormData
+          ? (options.body as FormData)
+          : JSON.stringify(options.body)
+        : undefined,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error("L'analyse prend plus de temps que prevu. Reessaie dans quelques instants.")
+    }
+    if (error instanceof TypeError) {
+      throw new Error('Impossible de joindre le serveur pour lancer l analyse.')
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
 
   if (!response.ok) {
     const message = await response.text()
+    if (message.startsWith('{')) {
+      try {
+        const payload = JSON.parse(message) as { detail?: string }
+        if (payload.detail) {
+          throw new Error(payload.detail)
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message) {
+          throw error
+        }
+        throw new Error(message)
+      }
+    }
     throw new Error(message || `API error (${response.status})`)
   }
 

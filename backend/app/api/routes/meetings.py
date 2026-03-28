@@ -74,29 +74,40 @@ def _extract_actions_with_openai(content: str) -> list[MeetingAction]:
         "Si date absente, laisse deadline vide. Pas de texte hors JSON."
     )
 
-    response = httpx.post(
-        "https://api.openai.com/v1/responses",
-        headers={
-            "Authorization": f"Bearer {settings.openai_api_key}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": settings.openai_nlu_model,
-            "temperature": 0,
-            "input": [
-                {
-                    "role": "system",
-                    "content": [{"type": "input_text", "text": system_prompt}],
-                },
-                {
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": content}],
-                },
-            ],
-        },
-        timeout=30.0,
-    )
-    response.raise_for_status()
+    try:
+        response = httpx.post(
+            "https://api.openai.com/v1/responses",
+            headers={
+                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": settings.openai_nlu_model,
+                "temperature": 0,
+                "input": [
+                    {
+                        "role": "system",
+                        "content": [{"type": "input_text", "text": system_prompt}],
+                    },
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": content}],
+                    },
+                ],
+            },
+            timeout=45.0,
+        )
+        response.raise_for_status()
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="L'analyse du compte rendu prend trop de temps. Reessaie dans un instant.",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Le service d'analyse est temporairement indisponible.",
+        ) from exc
 
     try:
         parsed = json.loads(_extract_openai_output_text(response.json()))
@@ -104,8 +115,11 @@ def _extract_actions_with_openai(content: str) -> list[MeetingAction]:
         if not isinstance(rows, list):
             return []
         return [MeetingAction.model_validate(row) for row in rows]
-    except (json.JSONDecodeError, ValueError, TypeError):
-        return []
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="La reponse d'analyse est invalide. Reessaie dans quelques secondes.",
+        ) from exc
 
 
 def _parse_deadline(raw_deadline: str) -> date:
