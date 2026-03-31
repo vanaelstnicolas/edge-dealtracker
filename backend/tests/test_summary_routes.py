@@ -292,3 +292,36 @@ def test_weekly_status_prefers_graph_when_configured(monkeypatch) -> None:
     assert payload["email_provider_effective"] == "graph"
     assert payload["graph_configured"] is True
     assert payload["graph_sender_user"] == "noreply@example.com"
+
+
+def test_weekly_cron_trigger_requires_config(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_cron_token", "")
+
+    response = client.post("/api/summary/weekly/trigger/cron")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Cron trigger is not configured"}
+
+
+def test_weekly_cron_trigger_rejects_invalid_token(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_cron_token", "secret-token")
+
+    response = client.post("/api/summary/weekly/trigger/cron", headers={"X-Cron-Token": "bad-token"})
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid cron token"}
+
+
+def test_weekly_cron_trigger_runs_job_with_valid_token(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(summary_route.settings, "weekly_summary_cron_token", "secret-token")
+    called = {"ok": False}
+    monkeypatch.setattr(summary_route, "send_weekly_summaries_job", lambda: called.__setitem__("ok", True))
+
+    response = client.post("/api/summary/weekly/trigger/cron", headers={"X-Cron-Token": "secret-token"})
+
+    assert response.status_code == 200
+    assert response.json() == {"result": "ok", "message": "Weekly summaries triggered"}
+    assert called["ok"] is True

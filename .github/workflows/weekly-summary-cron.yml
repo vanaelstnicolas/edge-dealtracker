@@ -1,0 +1,25 @@
+name: Weekly Summary Trigger
+
+on:
+  schedule:
+    - cron: "0 11 * * 2"
+  workflow_dispatch:
+
+jobs:
+  trigger-weekly-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger weekly summaries API
+        env:
+          API_BASE: ${{ secrets.DEALTRACKER_API_BASE }}
+          CRON_TOKEN: ${{ secrets.WEEKLY_SUMMARY_CRON_TOKEN }}
+        run: |
+          if [ -z "$API_BASE" ] || [ -z "$CRON_TOKEN" ]; then
+            echo "Missing required secrets DEALTRACKER_API_BASE or WEEKLY_SUMMARY_CRON_TOKEN"
+            exit 1
+          fi
+
+          curl --fail --silent --show-error \
+            -X POST "${API_BASE%/}/api/summary/weekly/trigger/cron" \
+            -H "X-Cron-Token: $CRON_TOKEN" \
+            -H "Content-Type: application/json"
