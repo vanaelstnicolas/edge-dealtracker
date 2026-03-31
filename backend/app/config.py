@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     weekly_summary_day_of_week: str = "mon"
     weekly_summary_hour: int = 8
     weekly_summary_minute: int = 0
+    weekly_summary_cron_token: str = ""
 
     model_config = SettingsConfigDict(env_file=(".env.local", ".env"), env_file_encoding="utf-8", extra="ignore")
 

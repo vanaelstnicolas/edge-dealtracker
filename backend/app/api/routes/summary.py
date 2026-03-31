@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import hmac
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from app.api.deps.auth import get_current_user
 from app.repositories.in_memory import store
@@ -123,6 +124,19 @@ def send_my_summary(current_user: dict[str, Any] = Depends(get_current_user)) ->
 def trigger_weekly_summary_now(current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     if not _is_admin(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+
+    send_weekly_summaries_job()
+    return {"result": "ok", "message": "Weekly summaries triggered"}
+
+
+@router.post("/weekly/trigger/cron")
+def trigger_weekly_summary_from_cron(x_cron_token: str | None = Header(default=None, alias="X-Cron-Token")) -> dict[str, Any]:
+    expected_token = settings.weekly_summary_cron_token.strip()
+    if not expected_token:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Cron trigger is not configured")
+
+    if not x_cron_token or not hmac.compare_digest(x_cron_token, expected_token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid cron token")
 
     send_weekly_summaries_job()
     return {"result": "ok", "message": "Weekly summaries triggered"}
