@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     weekly_summary_hour: int = 8
     weekly_summary_minute: int = 0
     weekly_summary_cron_token: str = ""
+    frontend_app_url: str = ""
 
     model_config = SettingsConfigDict(env_file=(".env.local", ".env"), env_file_encoding="utf-8", extra="ignore")
 
