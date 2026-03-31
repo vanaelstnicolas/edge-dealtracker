@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from app.api.deps.auth import get_current_user
 from app.repositories.in_memory import store
-from app.services.action_summary import build_owner_summary_email_content, build_owner_summary_text, get_owner_todo_items
+from app.services.action_summary import (
+    build_owner_summary_email_content,
+    build_owner_summary_text,
+    build_owner_summary_whatsapp_messages,
+    get_owner_todo_items,
+)
 from app.services.notifications import (
     email_provider_status,
     report_summary_delivery_failure,
@@ -80,7 +85,14 @@ def send_my_summary(current_user: dict[str, Any] = Depends(get_current_user)) ->
     target = next((row for row in store.list_users() if row.id == owner_id), None)
     if target and target.whatsapp_number:
         try:
-            send_whatsapp_message(to_number=target.whatsapp_number, body=summary_text)
+            whatsapp_messages = build_owner_summary_whatsapp_messages(
+                store,
+                owner_name=owner_name,
+                owner_id=owner_id,
+                app_url=settings.frontend_app_url,
+            )
+            for message in whatsapp_messages:
+                send_whatsapp_message(to_number=target.whatsapp_number, body=message)
             whatsapp_status = "sent"
         except Exception as exc:  # pragma: no cover - defensive
             report_summary_delivery_failure(

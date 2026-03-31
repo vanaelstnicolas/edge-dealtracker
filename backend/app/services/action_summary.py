@@ -120,3 +120,57 @@ def build_owner_summary_email_content(
     html_parts.append("</div>")
 
     return "\n".join(text_lines), "".join(html_parts)
+
+
+def build_owner_summary_whatsapp_messages(
+    store_instance,
+    *,
+    owner_name: str,
+    owner_id: str,
+    app_url: str,
+    max_message_length: int = 1300,
+) -> list[str]:
+    items = get_owner_todo_items(store_instance, owner_id)
+    safe_owner = owner_name.strip() or "Utilisateur"
+    cleaned_app_url = app_url.strip()
+
+    if not items:
+        body = f"Bonjour {safe_owner}, aucun to-do actif cette semaine."
+        if cleaned_app_url:
+            body += f"\n\nOuvrir DealTracker: {cleaned_app_url}"
+        return [body]
+
+    lines = [f"Bonjour {safe_owner}, voici tes actions actives ({len(items)}):", ""]
+    for index, item in enumerate(items, start=1):
+        lines.append(f"{index}. {item.company}")
+        lines.append(f"   - Action: {item.action}")
+        lines.append(f"   - Deadline: {item.deadline}")
+
+    if cleaned_app_url:
+        lines.extend(["", f"Ouvrir DealTracker: {cleaned_app_url}"])
+
+    chunks: list[str] = []
+    current_lines: list[str] = []
+    current_len = 0
+
+    for line in lines:
+        addition = len(line) + (1 if current_lines else 0)
+        if current_lines and current_len + addition > max_message_length:
+            chunks.append("\n".join(current_lines))
+            current_lines = [line]
+            current_len = len(line)
+        else:
+            current_lines.append(line)
+            current_len += addition
+
+    if current_lines:
+        chunks.append("\n".join(current_lines))
+
+    if len(chunks) <= 1:
+        return chunks
+
+    numbered_chunks: list[str] = []
+    total = len(chunks)
+    for idx, chunk in enumerate(chunks, start=1):
+        numbered_chunks.append(f"[{idx}/{total}]\n{chunk}")
+    return numbered_chunks
