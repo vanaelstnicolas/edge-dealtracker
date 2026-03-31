@@ -162,7 +162,7 @@ def _graph_access_token() -> str:
     return token
 
 
-def _send_email_via_graph(*, to_email: str, subject: str, body: str) -> None:
+def _send_email_via_graph(*, to_email: str, subject: str, body: str, body_html: str | None = None) -> None:
     sender_user = settings.graph_sender_user.strip()
     if not sender_user:
         raise RuntimeError("Microsoft Graph sender user is not configured")
@@ -175,7 +175,10 @@ def _send_email_via_graph(*, to_email: str, subject: str, body: str) -> None:
             json={
                 "message": {
                     "subject": subject,
-                    "body": {"contentType": "Text", "content": body},
+                    "body": {
+                        "contentType": "HTML" if body_html else "Text",
+                        "content": body_html if body_html else body,
+                    },
                     "toRecipients": [{"emailAddress": {"address": to_email}}],
                 },
                 "saveToSentItems": True,
@@ -196,7 +199,7 @@ def _send_email_via_graph(*, to_email: str, subject: str, body: str) -> None:
         raise RuntimeError("Microsoft Graph sendMail failed") from exc
 
 
-def _send_email_via_smtp(*, to_email: str, subject: str, body: str) -> None:
+def _send_email_via_smtp(*, to_email: str, subject: str, body: str, body_html: str | None = None) -> None:
     host = settings.smtp_host.strip()
     from_email = settings.smtp_from_email.strip()
     if not host or not from_email:
@@ -212,6 +215,8 @@ def _send_email_via_smtp(*, to_email: str, subject: str, body: str) -> None:
     msg["To"] = to_email
     msg["Subject"] = subject
     msg.set_content(body)
+    if body_html:
+        msg.add_alternative(body_html, subtype="html")
 
     timeout = max(1, settings.smtp_timeout_seconds)
     if settings.smtp_ssl_enabled:
@@ -229,22 +234,22 @@ def _send_email_via_smtp(*, to_email: str, subject: str, body: str) -> None:
         smtp.send_message(msg)
 
 
-def send_email_message(*, to_email: str, subject: str, body: str) -> None:
+def send_email_message(*, to_email: str, subject: str, body: str, body_html: str | None = None) -> None:
     status = email_provider_status()
     effective_provider = str(status["email_provider_effective"])
 
     if effective_provider == "graph":
         try:
-            _send_email_via_graph(to_email=to_email, subject=subject, body=body)
+            _send_email_via_graph(to_email=to_email, subject=subject, body=body, body_html=body_html)
             return
         except Exception as exc:
             if settings.graph_fallback_to_smtp and bool(status["smtp_configured"]):
-                _send_email_via_smtp(to_email=to_email, subject=subject, body=body)
+                _send_email_via_smtp(to_email=to_email, subject=subject, body=body, body_html=body_html)
                 return
             raise RuntimeError(f"Graph email send failed: {exc}") from exc
 
     if effective_provider in {"smtp", "smtp_fallback"}:
-        _send_email_via_smtp(to_email=to_email, subject=subject, body=body)
+        _send_email_via_smtp(to_email=to_email, subject=subject, body=body, body_html=body_html)
         return
 
     raise RuntimeError("No email provider configured (Graph or SMTP)")

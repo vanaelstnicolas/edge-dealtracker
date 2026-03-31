@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from app.api.deps.auth import get_current_user
 from app.repositories.in_memory import store
-from app.services.action_summary import build_owner_summary_text, get_owner_todo_items
+from app.services.action_summary import build_owner_summary_email_content, build_owner_summary_text, get_owner_todo_items
 from app.services.notifications import (
     email_provider_status,
     report_summary_delivery_failure,
@@ -95,10 +95,17 @@ def send_my_summary(current_user: dict[str, Any] = Depends(get_current_user)) ->
 
     if owner_email:
         try:
+            email_text, email_html = build_owner_summary_email_content(
+                store,
+                owner_name=owner_name,
+                owner_id=owner_id,
+                app_url=settings.frontend_app_url,
+            )
             send_email_message(
                 to_email=owner_email,
                 subject="DealTracker - Resume hebdomadaire des actions",
-                body=summary_text,
+                body=email_text,
+                body_html=email_html,
             )
             email_status = "sent"
         except Exception:

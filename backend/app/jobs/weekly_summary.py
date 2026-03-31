@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from app.config import settings
 from app.repositories.in_memory import store
-from app.services.action_summary import build_owner_summary_text
+from app.services.action_summary import build_owner_summary_email_content, build_owner_summary_text
 from app.services.notifications import report_summary_delivery_failure, send_email_message, send_whatsapp_message
 
 
@@ -25,10 +26,17 @@ def send_weekly_summaries_job() -> None:
 
         if user.email:
             try:
+                email_text, email_html = build_owner_summary_email_content(
+                    store,
+                    owner_name=user.full_name,
+                    owner_id=user.id,
+                    app_url=settings.frontend_app_url,
+                )
                 send_email_message(
                     to_email=user.email,
                     subject="DealTracker - Resume hebdomadaire des actions",
-                    body=summary_text,
+                    body=email_text,
+                    body_html=email_html,
                 )
             except Exception as exc:
                 report_summary_delivery_failure(

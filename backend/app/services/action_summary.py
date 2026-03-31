@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+import html
 
 from app.schemas.deal import DealStatus
 
@@ -40,3 +41,82 @@ def build_owner_summary_text(store_instance, owner_name: str, owner_id: str) -> 
     if len(items) > 10:
         lines.append(f"... +{len(items) - 10} action(s)")
     return "\n".join(lines)
+
+
+def build_owner_summary_email_content(
+    store_instance,
+    *,
+    owner_name: str,
+    owner_id: str,
+    app_url: str,
+) -> tuple[str, str]:
+    items = get_owner_todo_items(store_instance, owner_id)
+    safe_owner = owner_name.strip() or "Utilisateur"
+    cleaned_app_url = app_url.strip()
+
+    if not items:
+        text = f"Bonjour {safe_owner},\n\nAucune action active cette semaine."
+        if cleaned_app_url:
+            text += f"\n\nOuvrir DealTracker: {cleaned_app_url}"
+
+        html_parts = [
+            "<div style='font-family:Segoe UI,Arial,sans-serif;line-height:1.5;color:#1f2937;'>",
+            f"<h2 style='margin:0 0 8px 0;'>Bonjour {html.escape(safe_owner)},</h2>",
+            "<p style='margin:0 0 16px 0;'>Aucune action active cette semaine.</p>",
+        ]
+        if cleaned_app_url:
+            html_parts.append(
+                f"<p style='margin:0;'><a href='{html.escape(cleaned_app_url)}' "
+                "style='display:inline-block;padding:10px 14px;border-radius:8px;background:#111827;color:#ffffff;text-decoration:none;'>"
+                "Ouvrir DealTracker</a></p>"
+            )
+        html_parts.append("</div>")
+        return text, "".join(html_parts)
+
+    text_lines = [
+        f"Bonjour {safe_owner},",
+        "",
+        f"Voici ton resume hebdomadaire ({date.today().isoformat()}) :",
+        "",
+    ]
+    for index, item in enumerate(items, start=1):
+        text_lines.append(f"{index}. {item.company}")
+        text_lines.append(f"   - Action: {item.action}")
+        text_lines.append(f"   - Deadline: {item.deadline}")
+    if cleaned_app_url:
+        text_lines.extend(["", f"Ouvrir DealTracker: {cleaned_app_url}"])
+
+    html_rows = []
+    for item in items:
+        html_rows.append(
+            "<tr>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;vertical-align:top;font-weight:600;color:#111827;'>{html.escape(item.company)}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;vertical-align:top;color:#1f2937;white-space:pre-wrap;'>{html.escape(item.action)}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;vertical-align:top;color:#1f2937;'>{html.escape(item.deadline)}</td>"
+            "</tr>"
+        )
+
+    html_parts = [
+        "<div style='font-family:Segoe UI,Arial,sans-serif;line-height:1.5;color:#1f2937;'>",
+        f"<h2 style='margin:0 0 8px 0;'>Bonjour {html.escape(safe_owner)},</h2>",
+        f"<p style='margin:0 0 16px 0;'>Voici ton resume hebdomadaire ({date.today().isoformat()}).</p>",
+        "<table style='width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;'>",
+        "<thead><tr style='background:#f8fafc;'>"
+        "<th style='padding:10px;text-align:left;border-bottom:1px solid #e5e7eb;'>Dossier</th>"
+        "<th style='padding:10px;text-align:left;border-bottom:1px solid #e5e7eb;'>Action</th>"
+        "<th style='padding:10px;text-align:left;border-bottom:1px solid #e5e7eb;'>Deadline</th>"
+        "</tr></thead>",
+        "<tbody>",
+        *html_rows,
+        "</tbody></table>",
+    ]
+    if cleaned_app_url:
+        html_parts.append(
+            "<p style='margin:18px 0 0 0;'>"
+            f"<a href='{html.escape(cleaned_app_url)}' "
+            "style='display:inline-block;padding:10px 14px;border-radius:8px;background:#111827;color:#ffffff;text-decoration:none;'>"
+            "Ouvrir DealTracker</a></p>"
+        )
+    html_parts.append("</div>")
+
+    return "\n".join(text_lines), "".join(html_parts)
